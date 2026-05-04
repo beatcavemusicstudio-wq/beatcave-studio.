@@ -1,6 +1,8 @@
 /**
  * BEATCAVE STUDIO — App principale
  * File: App.tsx
+ * - Logo PNG bianco nella topbar
+ * - Layout responsive: mobile (tab bar) + desktop (sidebar)
  */
 
 import { useState, useEffect } from "react";
@@ -14,6 +16,10 @@ import NuovaPrenotazione from "./NuovaPrenotazione";
 import SchedaSessione from "./SchedaSessione";
 import SezioneClienti from "./SchedaCliente";
 import SezioneFatture from "./SezioneFatture";
+
+// ─────────────────────────────────────────────────────────
+// DESIGN SYSTEM
+// ─────────────────────────────────────────────────────────
 
 const C = {
   orange:     "#E8610A",
@@ -67,17 +73,41 @@ function badgeConfig(stato: StatoSessione) {
 
 function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
+// ─────────────────────────────────────────────────────────
+// CSS RESPONSIVE — iniettato una volta sola
+// ─────────────────────────────────────────────────────────
+
+const RESPONSIVE_CSS = `
+  .bc-app { display: flex; width: 100%; min-height: 100dvh; }
+  .bc-sidebar { display: none; }
+  .bc-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .bc-tabbar { display: block; }
+  .bc-mobile-header { display: block; }
+
+  @media (min-width: 768px) {
+    .bc-sidebar { display: flex; flex-direction: column; width: 220px; background: #0D0D0D; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; z-index: 10; }
+    .bc-main { margin-left: 220px; }
+    .bc-tabbar { display: none !important; }
+    .bc-mobile-header { display: none !important; }
+  }
+`;
+
+// ─────────────────────────────────────────────────────────
+// COMPONENTI UI
+// ─────────────────────────────────────────────────────────
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.9px", marginBottom: 10 }}>{children}</div>;
 }
-function Divider() { return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />; }
+
+function Divider() {
+  return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />;
+}
 
 function LoadingScreen() {
   return (
     <div style={{ width: "100%", minHeight: "100dvh", background: C.dark, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif" }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", marginBottom: 16 }}>
-        Beat<span style={{ color: C.orangeMid }}>cave</span>
-      </div>
+      <img src="/logo.png" alt="Beatcave Studio" style={{ height: 36, width: "auto", filter: "brightness(0) invert(1)", marginBottom: 24 }} />
       <div style={{ display: "flex", gap: 6 }}>
         {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, opacity: 0.3 + i * 0.3 }} />)}
       </div>
@@ -95,19 +125,87 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
   );
 }
 
-function Topbar() {
+// ── SIDEBAR DESKTOP ──
+function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabId) => void }) {
+  const d = new Date();
+  const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
+  const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]}`;
+
+  const tabs: { id: TabId; label: string; icon: JSX.Element }[] = [
+    { id: "home",       label: "Dashboard",  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange : "rgba(255,255,255,0.4)"}/><rect x="9" y="2" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="2" y="9" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="9" y="9" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"44" : "rgba(255,255,255,0.1)"}/></svg> },
+    { id: "calendario", label: "Calendario", icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={activeTab==="calendario" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={activeTab==="calendario" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "clienti",    label: "Clienti",    icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={activeTab==="clienti" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={activeTab==="clienti" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "fatture",    label: "Fatture",    icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={activeTab==="fatture" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={activeTab==="fatture" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+  ];
+
+  return (
+    <div className="bc-sidebar">
+      {/* Logo */}
+      <div style={{ padding: "20px 20px 16px", borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
+        <img src="/logo.png" alt="Beatcave Studio" style={{ height: 26, width: "auto", filter: "brightness(0) invert(1)", display: "block" }} />
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>{data}</div>
+      </div>
+
+      {/* Nav */}
+      <div style={{ padding: "12px 10px", flex: 1 }}>
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 10,
+            padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: activeTab === tab.id ? "rgba(232,97,10,0.15)" : "transparent",
+            marginBottom: 2,
+          }}>
+            {tab.icon}
+            <span style={{ fontSize: 13, fontWeight: 500, color: activeTab === tab.id ? "#fff" : "rgba(255,255,255,0.5)" }}>
+              {tab.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: 12, borderTop: "0.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>VS</div>
+        <div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>Admin</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>Beatcave Studio</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TOPBAR MOBILE ──
+function MobileTopbar({ onNuovaPrenotazione }: { onNuovaPrenotazione: () => void }) {
   const d = new Date();
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
   return (
-    <div style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+    <div className="bc-mobile-header" style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
       <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
-          Beat<span style={{ color: C.orangeMid }}>cave</span>
-        </div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{data}</div>
+        <img src="/logo.png" alt="Beatcave Studio" style={{ height: 24, width: "auto", filter: "brightness(0) invert(1)", display: "block" }} />
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{data}</div>
       </div>
       <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>VS</div>
+    </div>
+  );
+}
+
+// ── DESKTOP HEADER ──
+function DesktopHeader({ titolo, onNuovaPrenotazione }: { titolo: string; onNuovaPrenotazione: () => void }) {
+  const d = new Date();
+  const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
+  const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
+  return (
+    <div style={{ padding: "20px 28px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#111", letterSpacing: "-0.3px" }}>{titolo}</div>
+        <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{data}</div>
+      </div>
+      <button onClick={onNuovaPrenotazione} style={{ background: C.orange, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        Nuova prenotazione
+      </button>
     </div>
   );
 }
@@ -199,7 +297,7 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => v
     { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="4" y="2" width="14" height="18" rx="2.5" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M8 8h6M8 11.5h6M8 15h4" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    <div className="bc-tabbar" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       {tabs.map(tab => (
         <button key={tab.id} onClick={() => onChange(tab.id)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer" }}>
           {tab.icon(tab.id === active)}
@@ -222,6 +320,14 @@ export default function App() {
   const [sessioneAttiva, setSessioneAttiva] = useState<SessioneCompleta | null>(null);
   const [loading, setLoading]               = useState(true);
   const [errore, setErrore]                 = useState<string | null>(null);
+
+  // Inietta CSS responsive una volta sola
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = RESPONSIVE_CSS;
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, []);
 
   const caricaDati = async () => {
     setLoading(true);
@@ -346,16 +452,19 @@ export default function App() {
 
   if (schermata === "clienti") {
     return (
-      <div style={baseStyle}>
-        <SezioneClienti
-          clienti={clienti} sessioni={sessioni}
-          onClose={() => { setSchermata("home"); setActiveTab("home"); }}
-          onAggiungiCliente={handleAggiungiCliente}
-          onModificaCliente={handleModificaCliente}
-          onNuovaPrenotazione={(_id) => setSchermata("nuova-prenotazione")}
-        />
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} />
+      <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+        <div className="bc-main" style={{ background: C.bg }}>
+          <SezioneClienti
+            clienti={clienti} sessioni={sessioni}
+            onClose={() => { setSchermata("home"); setActiveTab("home"); }}
+            onAggiungiCliente={handleAggiungiCliente}
+            onModificaCliente={handleModificaCliente}
+            onNuovaPrenotazione={(_id) => setSchermata("nuova-prenotazione")}
+          />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
+            <TabBar active={activeTab} onChange={handleTabChange} />
+          </div>
         </div>
       </div>
     );
@@ -363,10 +472,13 @@ export default function App() {
 
   if (schermata === "fatture") {
     return (
-      <div style={baseStyle}>
-        <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} />
+      <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+        <div className="bc-main" style={{ background: C.bg }}>
+          <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
+            <TabBar active={activeTab} onChange={handleTabChange} />
+          </div>
         </div>
       </div>
     );
@@ -376,31 +488,46 @@ export default function App() {
     .filter(s => { const d = new Date(s.data + "T12:00:00"); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
     .map(s => new Date(s.data + "T12:00:00").getDate());
 
+  // ── HOME ──
   return (
-    <div style={baseStyle}>
-      <Topbar />
-      <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
-        <StatCards sessioni={sessioni} clienti={clienti} />
-        <Divider />
-        <CalendarioMini giorniConSessioni={giorniConSessioni} />
-        <Divider />
-        <div style={{ paddingTop: 12 }}>
-          <div style={{ padding: "0 16px 8px" }}><SectionLabel>Sessioni di oggi</SectionLabel></div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 16px" }}>
-            {sessioni.length === 0
-              ? <div style={{ fontSize: 13, color: "#aaa", textAlign: "center", padding: "20px 0" }}>Nessuna sessione oggi</div>
-              : sessioni.map(s => <SessioneCard key={s.id} sessione={s} onTap={() => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }} />)
-            }
+    <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+
+      <div className="bc-main" style={{ background: C.bg }}>
+
+        {/* Mobile header */}
+        <MobileTopbar onNuovaPrenotazione={() => setSchermata("nuova-prenotazione")} />
+
+        {/* Desktop header */}
+        <div style={{ display: "none" }} className="bc-desktop-header">
+          <DesktopHeader titolo="Dashboard" onNuovaPrenotazione={() => setSchermata("nuova-prenotazione")} />
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
+          <StatCards sessioni={sessioni} clienti={clienti} />
+          <Divider />
+          <CalendarioMini giorniConSessioni={giorniConSessioni} />
+          <Divider />
+          <div style={{ paddingTop: 12 }}>
+            <div style={{ padding: "0 16px 8px" }}><SectionLabel>Sessioni di oggi</SectionLabel></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 16px" }}>
+              {sessioni.length === 0
+                ? <div style={{ fontSize: 13, color: "#aaa", textAlign: "center", padding: "20px 0" }}>Nessuna sessione oggi</div>
+                : sessioni.map(s => <SessioneCard key={s.id} sessione={s} onTap={() => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }} />)
+              }
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
+            <button onClick={() => setSchermata("nuova-prenotazione")} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            </button>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
-          <button onClick={() => setSchermata("nuova-prenotazione")} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          </button>
+
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
+          <TabBar active={activeTab} onChange={handleTabChange} />
         </div>
-      </div>
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-        <TabBar active={activeTab} onChange={handleTabChange} />
+
       </div>
     </div>
   );
