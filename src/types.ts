@@ -1,9 +1,9 @@
-// types.ts — tipi condivisi tra tutti i componenti Beatcave
+// types.ts — tipi condivisi Beatcave Studio
 
 export type TipoSessione = "Registrazione" | "Mixing" | "Produzione" | "Mastering";
 export type StatoSessione = "in_corso" | "confermata" | "da_confermare";
 export type TabId = "home" | "calendario" | "clienti" | "fatture";
-export type Schermata = "home" | "nuova-prenotazione" | "scheda-sessione" | "clienti";
+export type Schermata = "home" | "nuova-prenotazione" | "scheda-sessione" | "clienti" | "fatture";
 
 export interface SessioneCompleta {
   id: number;
@@ -17,6 +17,7 @@ export interface SessioneCompleta {
   prezzo: number;
   pagato: boolean;
   note: string;
+  pacchettoId: number | null;
 }
 
 export interface Prenotazione {
@@ -30,6 +31,7 @@ export interface Prenotazione {
   prezzo: number;
   pagato: boolean;
   note: string;
+  pacchettoId?: number | null;
 }
 
 export interface Cliente {
@@ -38,4 +40,16 @@ export interface Cliente {
   email: string;
   telefono: string;
   dataCreazioneISO: string;
+}
+
+export interface Pacchetto {
+  id: number;
+  clienteNome: string;
+  clienteEmail: string;
+  nome: string;
+  numSessioni: number;
+  prezzoTotale: number;
+  pagato: boolean;
+  note: string;
+  creatoIl: string;
 }
