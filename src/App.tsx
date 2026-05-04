@@ -1,6 +1,6 @@
 /**
  * BEATCAVE STUDIO — App principale
- * File: App.tsx — ottimizzato per iPhone con Dynamic Island
+ * File: App.tsx
  */
 
 import { useState, useEffect } from "react";
@@ -13,10 +13,7 @@ import {
 import NuovaPrenotazione from "./NuovaPrenotazione";
 import SchedaSessione from "./SchedaSessione";
 import SezioneClienti from "./SchedaCliente";
-
-// ─────────────────────────────────────────────────────────
-// DESIGN SYSTEM
-// ─────────────────────────────────────────────────────────
+import SezioneFatture from "./SezioneFatture";
 
 const C = {
   orange:     "#E8610A",
@@ -70,17 +67,10 @@ function badgeConfig(stato: StatoSessione) {
 
 function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
-// ─────────────────────────────────────────────────────────
-// COMPONENTI UI
-// ─────────────────────────────────────────────────────────
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.9px", marginBottom: 10 }}>{children}</div>;
 }
-
-function Divider() {
-  return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />;
-}
+function Divider() { return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />; }
 
 function LoadingScreen() {
   return (
@@ -110,17 +100,7 @@ function Topbar() {
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
   return (
-    <div style={{
-      background: C.dark,
-      paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
-      paddingBottom: 14,
-      paddingLeft: 16,
-      paddingRight: 16,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      flexShrink: 0,
-    }}>
+    <div style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
       <div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
           Beat<span style={{ color: C.orangeMid }}>cave</span>
@@ -219,13 +199,7 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => v
     { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="4" y="2" width="14" height="18" rx="2.5" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M8 8h6M8 11.5h6M8 15h4" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
   ];
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(4,1fr)",
-      borderTop: `0.5px solid ${C.border}`,
-      background: "#fff",
-      paddingBottom: "env(safe-area-inset-bottom, 0px)",
-    }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       {tabs.map(tab => (
         <button key={tab.id} onClick={() => onChange(tab.id)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer" }}>
           {tab.icon(tab.id === active)}
@@ -280,7 +254,8 @@ export default function App() {
       const row = await inserisciSessione({
         cliente_nome: p.clienteNome, cliente_email: p.clienteEmail,
         data: p.data, ora_inizio: p.oraInizio, ora_fine: p.oraFine,
-        tipo: p.tipo, stato: "confermata", prezzo: p.prezzo, pagato: p.pagato, note: p.note,
+        tipo: p.tipo, stato: "confermata", prezzo: p.prezzo, pagato: p.pagato,
+        note: p.note, pacchetto_id: p.pacchettoId ?? null,
       });
       if (p.data === oggiISO()) {
         setSessioni(prev => [...prev, dbToSessione(row)].sort((a, b) => a.oraInizio.localeCompare(b.oraInizio)));
@@ -315,7 +290,8 @@ export default function App() {
       const row = await inserisciSessione({
         cliente_nome: duplicata.cliente, cliente_email: duplicata.clienteEmail,
         data: duplicata.data, ora_inizio: duplicata.oraInizio, ora_fine: duplicata.oraFine,
-        tipo: duplicata.tipo, stato: "confermata", prezzo: duplicata.prezzo, pagato: false, note: duplicata.note,
+        tipo: duplicata.tipo, stato: "confermata", prezzo: duplicata.prezzo,
+        pagato: false, note: duplicata.note, pacchetto_id: null,
       });
       if (duplicata.data === oggiISO()) {
         setSessioni(prev => [...prev, dbToSessione(row)].sort((a, b) => a.oraInizio.localeCompare(b.oraInizio)));
@@ -337,32 +313,23 @@ export default function App() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    setSchermata(tab === "clienti" ? "clienti" : "home");
+    if (tab === "clienti") setSchermata("clienti");
+    else if (tab === "fatture") setSchermata("fatture");
+    else setSchermata("home");
+  };
+
+  const baseStyle: React.CSSProperties = {
+    width: "100%", minHeight: "100dvh", background: C.bg,
+    display: "flex", flexDirection: "column",
+    fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif",
+    WebkitFontSmoothing: "antialiased",
   };
 
   if (loading) return <LoadingScreen />;
   if (errore)  return <ErrorScreen msg={errore} onRetry={caricaDati} />;
 
-  // Stile base condiviso da tutte le schermate
-  const baseStyle: React.CSSProperties = {
-    width: "100%",
-    minHeight: "100dvh",
-    background: C.bg,
-    display: "flex",
-    flexDirection: "column",
-    fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif",
-    WebkitFontSmoothing: "antialiased",
-  };
-
   if (schermata === "nuova-prenotazione") {
-    return (
-      <NuovaPrenotazione
-        clienti={clienti}
-        onSalva={handleNuovaPrenotazione}
-        onClose={() => setSchermata("home")}
-        onNuovoCliente={handleNuovoCliente}
-      />
-    );
+    return <NuovaPrenotazione clienti={clienti} onSalva={handleNuovaPrenotazione} onClose={() => setSchermata("home")} onNuovoCliente={handleNuovoCliente} />;
   }
 
   if (schermata === "scheda-sessione" && sessioneAttiva) {
@@ -381,8 +348,7 @@ export default function App() {
     return (
       <div style={baseStyle}>
         <SezioneClienti
-          clienti={clienti}
-          sessioni={sessioni}
+          clienti={clienti} sessioni={sessioni}
           onClose={() => { setSchermata("home"); setActiveTab("home"); }}
           onAggiungiCliente={handleAggiungiCliente}
           onModificaCliente={handleModificaCliente}
@@ -395,12 +361,19 @@ export default function App() {
     );
   }
 
+  if (schermata === "fatture") {
+    return (
+      <div style={baseStyle}>
+        <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
+          <TabBar active={activeTab} onChange={handleTabChange} />
+        </div>
+      </div>
+    );
+  }
+
   const giorniConSessioni = sessioni
-    .filter(s => {
-      const d = new Date(s.data + "T12:00:00");
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    })
+    .filter(s => { const d = new Date(s.data + "T12:00:00"); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
     .map(s => new Date(s.data + "T12:00:00").getDate());
 
   return (
