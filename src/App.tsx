@@ -1,8 +1,9 @@
 /**
  * BEATCAVE STUDIO — App principale
  * File: App.tsx
- * - Logo PNG bianco nella topbar
- * - Layout responsive: mobile (tab bar) + desktop (sidebar)
+ * - Calendario completo con sessioni per giorno
+ * - Layout responsive desktop + mobile
+ * - Logo PNG
  */
 
 import { useState, useEffect } from "react";
@@ -16,10 +17,7 @@ import NuovaPrenotazione from "./NuovaPrenotazione";
 import SchedaSessione from "./SchedaSessione";
 import SezioneClienti from "./SchedaCliente";
 import SezioneFatture from "./SezioneFatture";
-
-// ─────────────────────────────────────────────────────────
-// DESIGN SYSTEM
-// ─────────────────────────────────────────────────────────
+import SezioneCalendario from "./SezioneCalendario";
 
 const C = {
   orange:     "#E8610A",
@@ -73,17 +71,12 @@ function badgeConfig(stato: StatoSessione) {
 
 function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
-// ─────────────────────────────────────────────────────────
-// CSS RESPONSIVE — iniettato una volta sola
-// ─────────────────────────────────────────────────────────
-
 const RESPONSIVE_CSS = `
   .bc-app { display: flex; width: 100%; min-height: 100dvh; }
   .bc-sidebar { display: none; }
   .bc-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .bc-tabbar { display: block; }
   .bc-mobile-header { display: block; }
-
   @media (min-width: 768px) {
     .bc-sidebar { display: flex; flex-direction: column; width: 220px; background: #0D0D0D; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; z-index: 10; }
     .bc-main { margin-left: 220px; }
@@ -92,17 +85,10 @@ const RESPONSIVE_CSS = `
   }
 `;
 
-// ─────────────────────────────────────────────────────────
-// COMPONENTI UI
-// ─────────────────────────────────────────────────────────
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.9px", marginBottom: 10 }}>{children}</div>;
 }
-
-function Divider() {
-  return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />;
-}
+function Divider() { return <div style={{ height: "0.5px", background: C.border, margin: "14px 16px 0" }} />; }
 
 function LoadingScreen() {
   return (
@@ -125,45 +111,30 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
   );
 }
 
-// ── SIDEBAR DESKTOP ──
 function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabId) => void }) {
   const d = new Date();
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]}`;
-
-  const tabs: { id: TabId; label: string; icon: JSX.Element }[] = [
-    { id: "home",       label: "Dashboard",  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange : "rgba(255,255,255,0.4)"}/><rect x="9" y="2" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="2" y="9" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="9" y="9" width="5" height="5" rx="1.5" fill={activeTab==="home" ? C.orange+"44" : "rgba(255,255,255,0.1)"}/></svg> },
-    { id: "calendario", label: "Calendario", icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={activeTab==="calendario" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={activeTab==="calendario" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "clienti",    label: "Clienti",    icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={activeTab==="clienti" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={activeTab==="clienti" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "fatture",    label: "Fatture",    icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={activeTab==="fatture" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={activeTab==="fatture" ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+  const tabs: { id: TabId; label: string; icon: (a: boolean) => JSX.Element }[] = [
+    { id: "home",       label: "Dashboard",  icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange : "rgba(255,255,255,0.4)"}/><rect x="9" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="2" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="9" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"44" : "rgba(255,255,255,0.1)"}/></svg> },
+    { id: "calendario", label: "Calendario", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "clienti",    label: "Clienti",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
   ];
-
   return (
     <div className="bc-sidebar">
-      {/* Logo */}
       <div style={{ padding: "20px 20px 16px", borderBottom: "0.5px solid rgba(255,255,255,0.08)" }}>
         <img src="/logo.png" alt="Beatcave Studio" style={{ height: 26, width: "auto", filter: "brightness(0) invert(1)", display: "block" }} />
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>{data}</div>
       </div>
-
-      {/* Nav */}
       <div style={{ padding: "12px 10px", flex: 1 }}>
         {tabs.map(tab => (
-          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 10,
-            padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer",
-            background: activeTab === tab.id ? "rgba(232,97,10,0.15)" : "transparent",
-            marginBottom: 2,
-          }}>
-            {tab.icon}
-            <span style={{ fontSize: 13, fontWeight: 500, color: activeTab === tab.id ? "#fff" : "rgba(255,255,255,0.5)" }}>
-              {tab.label}
-            </span>
+          <button key={tab.id} onClick={() => onChange(tab.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: activeTab === tab.id ? "rgba(232,97,10,0.15)" : "transparent", marginBottom: 2 }}>
+            {tab.icon(activeTab === tab.id)}
+            <span style={{ fontSize: 13, fontWeight: 500, color: activeTab === tab.id ? "#fff" : "rgba(255,255,255,0.5)" }}>{tab.label}</span>
           </button>
         ))}
       </div>
-
-      {/* Footer */}
       <div style={{ padding: 12, borderTop: "0.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>VS</div>
         <div>
@@ -175,8 +146,7 @@ function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabI
   );
 }
 
-// ── TOPBAR MOBILE ──
-function MobileTopbar({ onNuovaPrenotazione }: { onNuovaPrenotazione: () => void }) {
+function MobileTopbar() {
   const d = new Date();
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
@@ -187,25 +157,6 @@ function MobileTopbar({ onNuovaPrenotazione }: { onNuovaPrenotazione: () => void
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{data}</div>
       </div>
       <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>VS</div>
-    </div>
-  );
-}
-
-// ── DESKTOP HEADER ──
-function DesktopHeader({ titolo, onNuovaPrenotazione }: { titolo: string; onNuovaPrenotazione: () => void }) {
-  const d = new Date();
-  const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
-  const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
-  return (
-    <div style={{ padding: "20px 28px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#111", letterSpacing: "-0.3px" }}>{titolo}</div>
-        <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{data}</div>
-      </div>
-      <button onClick={onNuovaPrenotazione} style={{ background: C.orange, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
-        Nuova prenotazione
-      </button>
     </div>
   );
 }
@@ -313,15 +264,15 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => v
 // ─────────────────────────────────────────────────────────
 
 export default function App() {
-  const [schermata, setSchermata]           = useState<Schermata>("home");
-  const [activeTab, setActiveTab]           = useState<TabId>("home");
-  const [sessioni, setSessioni]             = useState<SessioneCompleta[]>([]);
-  const [clienti, setClienti]               = useState<Cliente[]>([]);
-  const [sessioneAttiva, setSessioneAttiva] = useState<SessioneCompleta | null>(null);
-  const [loading, setLoading]               = useState(true);
-  const [errore, setErrore]                 = useState<string | null>(null);
+  const [schermata, setSchermata]               = useState<Schermata>("home");
+  const [activeTab, setActiveTab]               = useState<TabId>("home");
+  const [sessioni, setSessioni]                 = useState<SessioneCompleta[]>([]);
+  const [clienti, setClienti]                   = useState<Cliente[]>([]);
+  const [sessioneAttiva, setSessioneAttiva]     = useState<SessioneCompleta | null>(null);
+  const [loading, setLoading]                   = useState(true);
+  const [errore, setErrore]                     = useState<string | null>(null);
+  const [dataPreselezionata, setDataPresel]     = useState<string | undefined>(undefined);
 
-  // Inietta CSS responsive una volta sola
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = RESPONSIVE_CSS;
@@ -367,8 +318,10 @@ export default function App() {
         setSessioni(prev => [...prev, dbToSessione(row)].sort((a, b) => a.oraInizio.localeCompare(b.oraInizio)));
       }
     } catch { alert("Errore nel salvare la prenotazione. Riprova."); }
-    setSchermata("home");
-    setActiveTab("home");
+    setDataPresel(undefined);
+    // Torna alla schermata precedente
+    if (activeTab === "calendario") setSchermata("calendario");
+    else { setSchermata("home"); setActiveTab("home"); }
   };
 
   const handleAggiornaSessione = async (aggiornata: SessioneCompleta) => {
@@ -407,7 +360,7 @@ export default function App() {
 
   const handleAggiungiCliente = async (dati: Omit<Cliente, "id" | "dataCreazioneISO">) => {
     try { await handleNuovoCliente(dati); }
-    catch { alert("Errore nell'aggiungere il cliente. L'email potrebbe già esistere."); }
+    catch { alert("Errore nell'aggiungere il cliente."); }
   };
 
   const handleModificaCliente = async (aggiornato: Cliente) => {
@@ -419,30 +372,46 @@ export default function App() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    if (tab === "clienti") setSchermata("clienti");
-    else if (tab === "fatture") setSchermata("fatture");
+    if (tab === "clienti")    setSchermata("clienti");
+    else if (tab === "fatture")    setSchermata("fatture");
+    else if (tab === "calendario") setSchermata("calendario");
     else setSchermata("home");
   };
 
-  const baseStyle: React.CSSProperties = {
-    width: "100%", minHeight: "100dvh", background: C.bg,
-    display: "flex", flexDirection: "column",
-    fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif",
-    WebkitFontSmoothing: "antialiased",
+  const aprireNuovaPrenotazione = (data?: string) => {
+    setDataPresel(data);
+    setSchermata("nuova-prenotazione");
   };
 
   if (loading) return <LoadingScreen />;
   if (errore)  return <ErrorScreen msg={errore} onRetry={caricaDati} />;
 
+  // ── NUOVA PRENOTAZIONE ──
   if (schermata === "nuova-prenotazione") {
-    return <NuovaPrenotazione clienti={clienti} onSalva={handleNuovaPrenotazione} onClose={() => setSchermata("home")} onNuovoCliente={handleNuovoCliente} />;
+    return (
+      <NuovaPrenotazione
+        clienti={clienti}
+        dataIniziale={dataPreselezionata}
+        onSalva={handleNuovaPrenotazione}
+        onClose={() => {
+          setDataPresel(undefined);
+          if (activeTab === "calendario") setSchermata("calendario");
+          else setSchermata("home");
+        }}
+        onNuovoCliente={handleNuovoCliente}
+      />
+    );
   }
 
+  // ── SCHEDA SESSIONE ──
   if (schermata === "scheda-sessione" && sessioneAttiva) {
     return (
       <SchedaSessione
         sessione={sessioneAttiva}
-        onClose={() => { setSchermata("home"); setSessioneAttiva(null); }}
+        onClose={() => {
+          if (activeTab === "calendario") setSchermata("calendario");
+          else { setSchermata("home"); setSessioneAttiva(null); }
+        }}
         onAggiorna={handleAggiornaSessione}
         onElimina={handleEliminaSessione}
         onDuplica={handleDuplicaSessione}
@@ -450,59 +419,58 @@ export default function App() {
     );
   }
 
-  if (schermata === "clienti") {
-    return (
-      <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
-        <div className="bc-main" style={{ background: C.bg }}>
-          <SezioneClienti
-            clienti={clienti} sessioni={sessioni}
-            onClose={() => { setSchermata("home"); setActiveTab("home"); }}
-            onAggiungiCliente={handleAggiungiCliente}
-            onModificaCliente={handleModificaCliente}
-            onNuovaPrenotazione={(_id) => setSchermata("nuova-prenotazione")}
-          />
-          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-            <TabBar active={activeTab} onChange={handleTabChange} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (schermata === "fatture") {
-    return (
-      <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
-        <div className="bc-main" style={{ background: C.bg }}>
-          <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
-          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-            <TabBar active={activeTab} onChange={handleTabChange} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const giorniConSessioni = sessioni
     .filter(s => { const d = new Date(s.data + "T12:00:00"); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
     .map(s => new Date(s.data + "T12:00:00").getDate());
+
+  const wrapWithLayout = (content: JSX.Element) => (
+    <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+      <div className="bc-main" style={{ background: C.bg }}>
+        {content}
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
+          <TabBar active={activeTab} onChange={handleTabChange} />
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── CALENDARIO ──
+  if (schermata === "calendario") {
+    return wrapWithLayout(
+      <SezioneCalendario
+        onApriSessione={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }}
+        onNuovaPrenotazione={aprireNuovaPrenotazione}
+      />
+    );
+  }
+
+  // ── CLIENTI ──
+  if (schermata === "clienti") {
+    return wrapWithLayout(
+      <SezioneClienti
+        clienti={clienti} sessioni={sessioni}
+        onClose={() => { setSchermata("home"); setActiveTab("home"); }}
+        onAggiungiCliente={handleAggiungiCliente}
+        onModificaCliente={handleModificaCliente}
+        onNuovaPrenotazione={(_id) => aprireNuovaPrenotazione()}
+      />
+    );
+  }
+
+  // ── FATTURE ──
+  if (schermata === "fatture") {
+    return wrapWithLayout(
+      <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
+    );
+  }
 
   // ── HOME ──
   return (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
       <Sidebar activeTab={activeTab} onChange={handleTabChange} />
-
       <div className="bc-main" style={{ background: C.bg }}>
-
-        {/* Mobile header */}
-        <MobileTopbar onNuovaPrenotazione={() => setSchermata("nuova-prenotazione")} />
-
-        {/* Desktop header */}
-        <div style={{ display: "none" }} className="bc-desktop-header">
-          <DesktopHeader titolo="Dashboard" onNuovaPrenotazione={() => setSchermata("nuova-prenotazione")} />
-        </div>
-
+        <MobileTopbar />
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
           <StatCards sessioni={sessioni} clienti={clienti} />
           <Divider />
@@ -518,16 +486,14 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
-            <button onClick={() => setSchermata("nuova-prenotazione")} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
+            <button onClick={() => aprireNuovaPrenotazione()} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
             </button>
           </div>
         </div>
-
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
           <TabBar active={activeTab} onChange={handleTabChange} />
         </div>
-
       </div>
     </div>
   );
