@@ -227,7 +227,7 @@ export default function NuovaPrenotazione({ clienti, dataIniziale, onSalva, onCl
     if (!data)                                  e.data    = "Seleziona una data";
     if (!orarioLibero && !slotSel)              e.orario  = "Seleziona un orario";
     if (!tipo)                                  e.tipo    = "Seleziona il tipo di sessione";
-    if (prezzo === "" || isNaN(Number(prezzo))) e.prezzo  = "Inserisci un importo valido";
+    if (prezzo === "" || isNaN(Number(prezzo)) || Number(prezzo) < 0) e.prezzo = "Inserisci un importo valido";
     setErrori(e);
     return Object.keys(e).length === 0;
   };
