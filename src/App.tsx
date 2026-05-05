@@ -1,9 +1,6 @@
 /**
  * BEATCAVE STUDIO — App principale
  * File: App.tsx
- * - Calendario completo con sessioni per giorno
- * - Layout responsive desktop + mobile
- * - Logo PNG
  */
 
 import { useState, useEffect } from "react";
@@ -71,17 +68,21 @@ function badgeConfig(stato: StatoSessione) {
 
 function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
+// ── CSS RESPONSIVE — aggiunto bc-sidebar-spacer ──
 const RESPONSIVE_CSS = `
   .bc-app { display: flex; width: 100%; min-height: 100dvh; }
   .bc-sidebar { display: none; }
   .bc-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .bc-tabbar { display: block; }
   .bc-mobile-header { display: block; }
+  .bc-sidebar-spacer { display: none; }
+
   @media (min-width: 768px) {
     .bc-sidebar { display: flex; flex-direction: column; width: 220px; background: #0D0D0D; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; z-index: 10; }
     .bc-main { margin-left: 220px; }
     .bc-tabbar { display: none !important; }
     .bc-mobile-header { display: none !important; }
+    .bc-sidebar-spacer { display: block; width: 220px; flex-shrink: 0; }
   }
 `;
 
@@ -259,19 +260,15 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => v
   );
 }
 
-// ─────────────────────────────────────────────────────────
-// APP PRINCIPALE
-// ─────────────────────────────────────────────────────────
-
 export default function App() {
-  const [schermata, setSchermata]               = useState<Schermata>("home");
-  const [activeTab, setActiveTab]               = useState<TabId>("home");
-  const [sessioni, setSessioni]                 = useState<SessioneCompleta[]>([]);
-  const [clienti, setClienti]                   = useState<Cliente[]>([]);
-  const [sessioneAttiva, setSessioneAttiva]     = useState<SessioneCompleta | null>(null);
-  const [loading, setLoading]                   = useState(true);
-  const [errore, setErrore]                     = useState<string | null>(null);
-  const [dataPreselezionata, setDataPresel]     = useState<string | undefined>(undefined);
+  const [schermata, setSchermata]           = useState<Schermata>("home");
+  const [activeTab, setActiveTab]           = useState<TabId>("home");
+  const [sessioni, setSessioni]             = useState<SessioneCompleta[]>([]);
+  const [clienti, setClienti]               = useState<Cliente[]>([]);
+  const [sessioneAttiva, setSessioneAttiva] = useState<SessioneCompleta | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [errore, setErrore]                 = useState<string | null>(null);
+  const [dataPreselezionata, setDataPresel] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -319,7 +316,6 @@ export default function App() {
       }
     } catch { alert("Errore nel salvare la prenotazione. Riprova."); }
     setDataPresel(undefined);
-    // Torna alla schermata precedente
     if (activeTab === "calendario") setSchermata("calendario");
     else { setSchermata("home"); setActiveTab("home"); }
   };
@@ -372,7 +368,7 @@ export default function App() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    if (tab === "clienti")    setSchermata("clienti");
+    if (tab === "clienti")         setSchermata("clienti");
     else if (tab === "fatture")    setSchermata("fatture");
     else if (tab === "calendario") setSchermata("calendario");
     else setSchermata("home");
@@ -403,19 +399,24 @@ export default function App() {
     );
   }
 
-  // ── SCHEDA SESSIONE ──
+  // ── SCHEDA SESSIONE — con sidebar spacer per desktop ──
   if (schermata === "scheda-sessione" && sessioneAttiva) {
     return (
-      <SchedaSessione
-        sessione={sessioneAttiva}
-        onClose={() => {
-          if (activeTab === "calendario") setSchermata("calendario");
-          else { setSchermata("home"); setSessioneAttiva(null); }
-        }}
-        onAggiorna={handleAggiornaSessione}
-        onElimina={handleEliminaSessione}
-        onDuplica={handleDuplicaSessione}
-      />
+      <div style={{ display: "flex", width: "100%", minHeight: "100dvh", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SchedaSessione
+            sessione={sessioneAttiva}
+            onClose={() => {
+              if (activeTab === "calendario") setSchermata("calendario");
+              else { setSchermata("home"); setSessioneAttiva(null); }
+            }}
+            onAggiorna={handleAggiornaSessione}
+            onElimina={handleEliminaSessione}
+            onDuplica={handleDuplicaSessione}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -435,7 +436,6 @@ export default function App() {
     </div>
   );
 
-  // ── CALENDARIO ──
   if (schermata === "calendario") {
     return wrapWithLayout(
       <SezioneCalendario
@@ -445,7 +445,6 @@ export default function App() {
     );
   }
 
-  // ── CLIENTI ──
   if (schermata === "clienti") {
     return wrapWithLayout(
       <SezioneClienti
@@ -458,7 +457,6 @@ export default function App() {
     );
   }
 
-  // ── FATTURE ──
   if (schermata === "fatture") {
     return wrapWithLayout(
       <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
