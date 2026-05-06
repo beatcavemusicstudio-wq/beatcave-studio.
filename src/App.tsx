@@ -1,12 +1,14 @@
 /**
  * BEATCAVE STUDIO — App principale
  * File: App.tsx
+ * - Dashboard con sessioni future invece del calendario mini
+ * - Archiviazione automatica sessioni passate
  */
 
 import { useState, useEffect } from "react";
 import type { SessioneCompleta, Prenotazione, TabId, Schermata, Cliente } from "./types";
 import {
-  fetchSessioni, fetchClienti, inserisciSessione, aggiornaSessione,
+  fetchSessioniFuture, fetchClienti, inserisciSessione, aggiornaSessione,
   eliminaSessione, inserisciCliente, aggiornaCliente,
   dbToSessione, dbToCliente,
 } from "./supabase";
@@ -40,22 +42,20 @@ const SESSION_COLORS: Record<TipoSessione, string> = {
 };
 
 const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
-const GIORNI_BREVI = ["L","M","M","G","V","S","D"];
+const MESI_BREVI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 
-function giornoISO(d: Date): number { return (d.getDay() + 6) % 7; }
-interface Cella { giorno: number; corrente: boolean; }
+function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
-function generaGriglia(anno: number, mese: number): Cella[] {
-  const primo  = new Date(anno, mese, 1);
-  const ultimo = new Date(anno, mese + 1, 0);
-  const offset = giornoISO(primo);
-  const prec   = new Date(anno, mese, 0);
-  const celle: Cella[] = [];
-  for (let i = offset - 1; i >= 0; i--) celle.push({ giorno: prec.getDate() - i, corrente: false });
-  for (let g = 1; g <= ultimo.getDate(); g++) celle.push({ giorno: g, corrente: true });
-  let ex = 1;
-  while (celle.length % 7 !== 0) celle.push({ giorno: ex++, corrente: false });
-  return celle;
+function formatDataBreve(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T12:00:00");
+  const gg = d.toLocaleDateString("it-IT", { weekday: "short" });
+  const isOggi = iso === oggiISO();
+  const domani = new Date(); domani.setDate(domani.getDate() + 1);
+  const isDomani = iso === domani.toISOString().split("T")[0];
+  if (isOggi) return "Oggi";
+  if (isDomani) return "Domani";
+  return `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI_BREVI[d.getMonth()]}`;
 }
 
 function badgeConfig(stato: StatoSessione) {
@@ -66,9 +66,6 @@ function badgeConfig(stato: StatoSessione) {
   }
 }
 
-function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
-
-// ── CSS RESPONSIVE — aggiunto bc-sidebar-spacer ──
 const RESPONSIVE_CSS = `
   .bc-app { display: flex; width: 100%; min-height: 100dvh; }
   .bc-sidebar { display: none; }
@@ -76,7 +73,6 @@ const RESPONSIVE_CSS = `
   .bc-tabbar { display: block; }
   .bc-mobile-header { display: block; }
   .bc-sidebar-spacer { display: none; }
-
   @media (min-width: 768px) {
     .bc-sidebar { display: flex; flex-direction: column; width: 220px; background: #0D0D0D; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; z-index: 10; }
     .bc-main { margin-left: 220px; }
@@ -163,11 +159,13 @@ function MobileTopbar() {
 }
 
 function StatCards({ sessioni, clienti }: { sessioni: SessioneCompleta[]; clienti: Cliente[] }) {
-  const incasso = sessioni.filter(s => s.pagato).reduce((acc, s) => acc + s.prezzo, 0);
+  const oggi = oggiISO();
+  const sessioniOggi = sessioni.filter(s => s.data === oggi);
+  const incassoOggi = sessioniOggi.filter(s => s.pagato).reduce((acc, s) => acc + s.prezzo, 0);
   const items = [
-    { valore: String(sessioni.length), label: "Sessioni oggi", colore: C.orange },
-    { valore: `€${incasso}`,           label: "Incasso oggi",  colore: C.green  },
-    { valore: String(clienti.length),  label: "Clienti",       colore: null      },
+    { valore: String(sessioniOggi.length), label: "Sessioni oggi",  colore: C.orange },
+    { valore: `€${incassoOggi}`,           label: "Incasso oggi",   colore: C.green  },
+    { valore: String(clienti.length),       label: "Clienti",        colore: null      },
   ];
   return (
     <div style={{ padding: "12px 16px 0" }}>
@@ -184,59 +182,70 @@ function StatCards({ sessioni, clienti }: { sessioni: SessioneCompleta[]; client
   );
 }
 
-function CalendarioMini({ giorniConSessioni }: { giorniConSessioni: number[] }) {
-  const now = new Date();
-  const [anno, setAnno] = useState(now.getFullYear());
-  const [mese, setMese] = useState(now.getMonth());
-  const prev = () => mese === 0 ? (setAnno(a => a - 1), setMese(11)) : setMese(m => m - 1);
-  const next = () => mese === 11 ? (setAnno(a => a + 1), setMese(0)) : setMese(m => m + 1);
-  const celle = generaGriglia(anno, mese);
-  const èMeseOggi = anno === now.getFullYear() && mese === now.getMonth();
-  return (
-    <div style={{ padding: "10px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>{MESI[mese]} {anno}</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {(["‹","›"] as const).map((ch, i) => (
-            <button key={i} onClick={i === 0 ? prev : next} style={{ width: 26, height: 26, borderRadius: 6, border: `0.5px solid ${C.border}`, background: C.surface, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#555" }}>{ch}</button>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 4 }}>
-        {GIORNI_BREVI.map((g, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: "#aaa" }}>{g}</div>)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
-        {celle.map((cella, i) => {
-          const èOggi      = èMeseOggi && cella.corrente && cella.giorno === now.getDate();
-          const haSessione = cella.corrente && giorniConSessioni.includes(cella.giorno);
-          return (
-            <div key={i} style={{ aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, borderRadius: 6, position: "relative", background: èOggi ? C.orange : "transparent", color: èOggi ? "#fff" : cella.corrente ? "inherit" : "#ccc", fontWeight: èOggi ? 700 : 400 }}>
-              {cella.giorno}
-              {haSessione && <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 3, height: 3, borderRadius: "50%", background: èOggi ? "rgba(255,255,255,0.8)" : C.orange }} />}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// ── LISTA SESSIONI FUTURE ──
+function SessioniFuture({ sessioni, onTap }: { sessioni: SessioneCompleta[]; onTap: (s: SessioneCompleta) => void }) {
+  const oggi = oggiISO();
 
-function SessioneCard({ sessione, onTap }: { sessione: SessioneCompleta; onTap: () => void }) {
-  const badge = badgeConfig(sessione.stato as StatoSessione);
+  // Raggruppa per data
+  const perGiorno = sessioni.reduce((acc, s) => {
+    if (!acc[s.data]) acc[s.data] = [];
+    acc[s.data].push(s);
+    return acc;
+  }, {} as Record<string, SessioneCompleta[]>);
+
+  const date = Object.keys(perGiorno).sort();
+
+  if (sessioni.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "32px 0" }}>
+        <div style={{ fontSize: 13, color: "#aaa" }}>Nessuna sessione in programma</div>
+      </div>
+    );
+  }
+
   return (
-    <div onClick={onTap} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `0.5px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}>
-      <div style={{ width: 3, height: 36, borderRadius: 2, background: SESSION_COLORS[sessione.tipo as TipoSessione], flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sessione.cliente}</div>
-        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-          {sessione.oraInizio} – {sessione.oraFine} · {sessione.tipo}
-          {sessione.pagato && <span style={{ marginLeft: 6, color: C.green }}>· €{sessione.prezzo} ✓</span>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {date.map(data => (
+        <div key={data}>
+          {/* Intestazione giorno */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{
+              fontSize: 12, fontWeight: 700,
+              color: data === oggi ? C.orange : "#555",
+              background: data === oggi ? C.orangeLight : "transparent",
+              padding: data === oggi ? "3px 10px" : "3px 0",
+              borderRadius: 20,
+            }}>
+              {formatDataBreve(data)}
+            </div>
+            <div style={{ flex: 1, height: "0.5px", background: C.border }} />
+            <div style={{ fontSize: 11, color: "#aaa" }}>{perGiorno[data].length} sess.</div>
+          </div>
+
+          {/* Sessioni del giorno */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {perGiorno[data].map(s => {
+              const badge = badgeConfig(s.stato as StatoSessione);
+              return (
+                <div key={s.id} onClick={() => onTap(s)} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `0.5px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}>
+                  <div style={{ width: 3, height: 36, borderRadius: 2, background: SESSION_COLORS[s.tipo as TipoSessione], flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.cliente}</div>
+                    <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                      {s.oraInizio} – {s.oraFine} · {s.tipo}
+                      {s.pagato && <span style={{ marginLeft: 6, color: C.green }}>· €{s.prezzo} ✓</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: badge.bg, color: badge.color }}>{badge.label}</div>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2l4 5-4 5" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: badge.bg, color: badge.color }}>{badge.label}</div>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2l4 5-4 5" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      </div>
+      ))}
     </div>
   );
 }
@@ -260,6 +269,10 @@ function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => v
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// APP PRINCIPALE
+// ─────────────────────────────────────────────────────────
+
 export default function App() {
   const [schermata, setSchermata]           = useState<Schermata>("home");
   const [activeTab, setActiveTab]           = useState<TabId>("home");
@@ -282,7 +295,7 @@ export default function App() {
     setErrore(null);
     try {
       const [righeSessioni, righeClienti] = await Promise.all([
-        fetchSessioni(oggiISO()),
+        fetchSessioniFuture(),
         fetchClienti(),
       ]);
       setSessioni(righeSessioni.map(dbToSessione));
@@ -311,8 +324,10 @@ export default function App() {
         tipo: p.tipo, stato: "confermata", prezzo: p.prezzo, pagato: p.pagato,
         note: p.note, pacchetto_id: p.pacchettoId ?? null,
       });
-      if (p.data === oggiISO()) {
-        setSessioni(prev => [...prev, dbToSessione(row)].sort((a, b) => a.oraInizio.localeCompare(b.oraInizio)));
+      const nuova = dbToSessione(row);
+      // Aggiunge alla lista solo se è futura
+      if (nuova.data >= oggiISO()) {
+        setSessioni(prev => [...prev, nuova].sort((a, b) => a.data.localeCompare(b.data) || a.oraInizio.localeCompare(b.oraInizio)));
       }
     } catch { alert("Errore nel salvare la prenotazione. Riprova."); }
     setDataPresel(undefined);
@@ -348,8 +363,9 @@ export default function App() {
         tipo: duplicata.tipo, stato: "confermata", prezzo: duplicata.prezzo,
         pagato: false, note: duplicata.note, pacchetto_id: null,
       });
-      if (duplicata.data === oggiISO()) {
-        setSessioni(prev => [...prev, dbToSessione(row)].sort((a, b) => a.oraInizio.localeCompare(b.oraInizio)));
+      const nuova = dbToSessione(row);
+      if (nuova.data >= oggiISO()) {
+        setSessioni(prev => [...prev, nuova].sort((a, b) => a.data.localeCompare(b.data) || a.oraInizio.localeCompare(b.oraInizio)));
       }
     } catch { alert("Errore nella duplicazione."); }
   };
@@ -382,7 +398,6 @@ export default function App() {
   if (loading) return <LoadingScreen />;
   if (errore)  return <ErrorScreen msg={errore} onRetry={caricaDati} />;
 
-  // ── NUOVA PRENOTAZIONE ──
   if (schermata === "nuova-prenotazione") {
     return (
       <NuovaPrenotazione
@@ -399,7 +414,6 @@ export default function App() {
     );
   }
 
-  // ── SCHEDA SESSIONE — con sidebar spacer per desktop ──
   if (schermata === "scheda-sessione" && sessioneAttiva) {
     return (
       <div style={{ display: "flex", width: "100%", minHeight: "100dvh", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
@@ -419,10 +433,6 @@ export default function App() {
       </div>
     );
   }
-
-  const giorniConSessioni = sessioni
-    .filter(s => { const d = new Date(s.data + "T12:00:00"); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
-    .map(s => new Date(s.data + "T12:00:00").getDate());
 
   const wrapWithLayout = (content: JSX.Element) => (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
@@ -472,16 +482,12 @@ export default function App() {
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
           <StatCards sessioni={sessioni} clienti={clienti} />
           <Divider />
-          <CalendarioMini giorniConSessioni={giorniConSessioni} />
-          <Divider />
-          <div style={{ paddingTop: 12 }}>
-            <div style={{ padding: "0 16px 8px" }}><SectionLabel>Sessioni di oggi</SectionLabel></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 16px" }}>
-              {sessioni.length === 0
-                ? <div style={{ fontSize: 13, color: "#aaa", textAlign: "center", padding: "20px 0" }}>Nessuna sessione oggi</div>
-                : sessioni.map(s => <SessioneCard key={s.id} sessione={s} onTap={() => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }} />)
-              }
-            </div>
+          <div style={{ paddingTop: 14, padding: "14px 16px 0" }}>
+            <SectionLabel>Prossime sessioni</SectionLabel>
+            <SessioniFuture
+              sessioni={sessioni}
+              onTap={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }}
+            />
           </div>
           <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
             <button onClick={() => aprireNuovaPrenotazione()} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
