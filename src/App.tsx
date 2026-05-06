@@ -19,8 +19,9 @@ import SezioneFatture from "./SezioneFatture";
 import SezioneCalendario from "./SezioneCalendario";
 
 const C = {
-  orange:     "#E8610A",
-  orangeMid:  "#F97316",
+  orange:      "#E8610A",
+  orangeMid:   "#F97316",
+  orangeLight: "#FEF0E6",
   dark:       "#0D0D0D",
   green:      "#1D9E75",
   greenLight: "#E1F5EE",
