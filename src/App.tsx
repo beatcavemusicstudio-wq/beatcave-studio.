@@ -145,16 +145,9 @@ function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabI
 }
 
 function MobileTopbar() {
-  const d = new Date();
-  const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
-  const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
   return (
-    <div className="bc-mobile-header" style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-      <div>
-        <img src="/logo.png" alt="Beatcave Studio" style={{ height: 24, width: "auto", filter: "brightness(0) invert(1)", display: "block" }} />
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{data}</div>
-      </div>
-      <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>VS</div>
+    <div className="bc-mobile-header" style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <img src="/logo.png" alt="Beatcave Studio" style={{ height: 28, width: "auto", filter: "brightness(0) invert(1)", display: "block" }} />
     </div>
   );
 }
