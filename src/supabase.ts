@@ -1,6 +1,6 @@
 /**
  * BEATCAVE STUDIO — Client Supabase
- * File: supabase.ts — aggiornato con API pacchetti
+ * File: supabase.ts
  */
 
 const BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
@@ -43,6 +43,17 @@ export async function aggiornaCliente(id: number, c: { nome: string; email: stri
 export async function fetchSessioni(data?: string) {
   const filtro = data ? `?data=eq.${data}&order=ora_inizio` : `?order=data.desc,ora_inizio`;
   const rows = await req(`/sessioni${filtro}`);
+  return rows ?? [];
+}
+
+export async function fetchSessioniFuture() {
+  const oggi = new Date().toISOString().split("T")[0];
+  const rows = await req(`/sessioni?archiviata=eq.false&data=gte.${oggi}&order=data,ora_inizio`);
+  return rows ?? [];
+}
+
+export async function fetchSessioniArchiviate() {
+  const rows = await req(`/sessioni?archiviata=eq.true&order=data.desc,ora_inizio`);
   return rows ?? [];
 }
 
@@ -127,6 +138,7 @@ export function dbToSessione(row: Record<string, unknown>) {
     pagato:       Boolean(row.pagato),
     note:         String(row.note ?? ""),
     pacchettoId:  row.pacchetto_id ? Number(row.pacchetto_id) : null,
+    archiviata:   Boolean(row.archiviata),
   };
 }
 
