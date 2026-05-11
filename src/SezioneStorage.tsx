@@ -68,7 +68,7 @@ function iniziali(nome: string): string {
 }
 
 // Genera firma HMAC-SHA256 per R2 (AWS Signature V4)
-async function hmacSha256(key: ArrayBuffer | string, data: string): Promise<ArrayBuffer> {
+async function hmacSha256(key: ArrayBuffer | Uint8Array | string, data: string): Promise<ArrayBuffer> {
   const keyData = typeof key === "string" ? new TextEncoder().encode(key) : key;
   const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
@@ -121,9 +121,9 @@ async function uploadR2(file: File, path: string): Promise<string> {
   const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
 
   const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
-  const kRegion  = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, service);
-  const kSigning = await hmacSha256(kService, "aws4_request");
+  const kRegion  = await hmacSha256(new Uint8Array(kDate), region);
+const kService = await hmacSha256(new Uint8Array(kRegion), service);
+const kSigning = await hmacSha256(new Uint8Array(kService), "aws4_request");
   const signature = toHex(await hmacSha256(kSigning, stringToSign));
 
   const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
