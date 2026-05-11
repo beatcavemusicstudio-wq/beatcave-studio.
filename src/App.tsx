@@ -444,8 +444,8 @@ export default function App() {
     else if (tab === "calendario") setSchermata("calendario");
     else if (tab === "disponibilita") setSchermata("disponibilita");
     else if (tab === "richieste")  { setSchermata("richieste"); fetchRichiesteInAttesa().then(setRichieste); }
+    else if (tab === "storage")    setSchermata("storage");
     else setSchermata("home");
-    else if (tab === "storage") setSchermata("storage");
   };
 
   const aprireNuovaPrenotazione = (data?: string) => {
