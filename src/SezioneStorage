@@ -1,0 +1,468 @@
+/**
+ * BEATCAVE STUDIO — Sezione Storage Audio
+ * File: SezioneStorage.tsx
+ *
+ * Funzionalità:
+ *  - Seleziona cliente
+ *  - Crea cartelle per brano
+ *  - Carica file MP3/WAV
+ *  - Player audio inline
+ *  - Elimina file
+ */
+
+import { useState, useEffect, useRef } from "react";
+
+// ─────────────────────────────────────────────────────────
+// CONFIGURAZIONE
+// ─────────────────────────────────────────────────────────
+
+const R2_ENDPOINT  = "https://5152ba61567f02cdbb439af3630b10b4.r2.cloudflarestorage.com";
+const R2_BUCKET    = "beatcave-audio";
+const R2_ACCESS    = "8880ad678671b9e138a38986ea03a50e";
+const R2_SECRET    = "0b17e135a1b61c007da4a4205f37474af5da7c58790f6db861dfb9b56385be74";
+const PUBLIC_URL   = "https://audio.beatcavestudio.it";
+
+const SUPA_BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
+const SUPA_KEY  = "sb_publishable_BGd9aD4jqt6K6txVpDCifA_C-IvCaP_";
+const SUPA_H    = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+
+async function supaReq(path: string, options?: RequestInit) {
+  const res = await fetch(`${SUPA_BASE}${path}`, { ...options, headers: { ...SUPA_H, ...(options?.headers ?? {}) } });
+  if (!res.ok) throw new Error(await res.text());
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ─────────────────────────────────────────────────────────
+// DESIGN SYSTEM
+// ─────────────────────────────────────────────────────────
+
+const C = {
+  orange:      "#E8610A",
+  orangeLight: "#FEF0E6",
+  dark:        "#0D0D0D",
+  green:       "#1D9E75",
+  greenLight:  "#E1F5EE",
+  greenDark:   "#0F6E56",
+  red:         "#A32D2D",
+  redLight:    "#FCEBEB",
+  purple:      "#534AB7",
+  purpleLight: "#EEEDFE",
+  border:      "rgba(0,0,0,0.08)",
+  bg:          "#f5f5f5",
+} as const;
+
+// ─────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────
+
+interface Cliente { id: number; nome: string; email: string; }
+interface AudioFile { id: number; cliente_email: string; brano: string; nome_file: string; storage_path: string; creato_il: string; }
+
+// ─────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────
+
+function iniziali(nome: string): string {
+  return nome.split(" ").filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
+}
+
+// Genera firma HMAC-SHA256 per R2 (AWS Signature V4)
+async function hmacSha256(key: ArrayBuffer | string, data: string): Promise<ArrayBuffer> {
+  const keyData = typeof key === "string" ? new TextEncoder().encode(key) : key;
+  const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
+}
+
+async function sha256hex(data: ArrayBuffer | string): Promise<string> {
+  const buf = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function uploadR2(file: File, path: string): Promise<string> {
+  const now = new Date();
+  const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const shortDate = dateStamp.slice(0, 8);
+  const region = "auto";
+  const service = "s3";
+
+  const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
+  const objectKey = `${R2_BUCKET}/${path}`;
+  const url = `${R2_ENDPOINT}/${objectKey}`;
+
+  const fileBuffer = await file.arrayBuffer();
+  const payloadHash = await sha256hex(fileBuffer);
+
+  const headers: Record<string, string> = {
+    "host": host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": dateStamp,
+    "content-type": file.type || "audio/mpeg",
+  };
+
+  const signedHeaders = Object.keys(headers).sort().join(";");
+  const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join("\n") + "\n";
+
+  const canonicalRequest = [
+    "PUT",
+    `/${objectKey}`,
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
+
+  const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
+  const kRegion  = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, service);
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+
+  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { ...headers, "Authorization": authorization },
+    body: fileBuffer,
+  });
+
+  if (!res.ok) throw new Error(`Upload fallito: ${res.status} ${await res.text()}`);
+  return `${PUBLIC_URL}/${path}`;
+}
+
+async function deleteR2(path: string): Promise<void> {
+  const now = new Date();
+  const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const shortDate = dateStamp.slice(0, 8);
+  const region = "auto";
+  const service = "s3";
+  const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
+  const objectKey = `${R2_BUCKET}/${path}`;
+  const payloadHash = await sha256hex(new ArrayBuffer(0));
+
+  const headers: Record<string, string> = {
+    "host": host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": dateStamp,
+  };
+
+  const signedHeaders = Object.keys(headers).sort().join(";");
+  const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join("\n") + "\n";
+  const canonicalRequest = ["DELETE", `/${objectKey}`, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+  const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
+
+  const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
+  const kRegion  = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, service);
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
+
+  await fetch(`${R2_ENDPOINT}/${objectKey}`, {
+    method: "DELETE",
+    headers: { ...headers, "Authorization": authorization },
+  });
+}
+
+// ─────────────────────────────────────────────────────────
+// PLAYER AUDIO
+// ─────────────────────────────────────────────────────────
+
+function AudioPlayer({ url, nome }: { url: string; nome: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const toggle = () => {
+    if (!audioRef.current) return;
+    if (playing) { audioRef.current.pause(); setPlaying(false); }
+    else { audioRef.current.play(); setPlaying(true); }
+  };
+
+  const formatTime = (s: number) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.purpleLight, borderRadius: 10, padding: "10px 12px" }}>
+      <audio ref={audioRef} src={url}
+        onTimeUpdate={e => setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)}
+        onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
+        onEnded={() => setPlaying(false)} />
+      <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: "50%", background: C.purple, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+        {playing
+          ? <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="3" height="10" rx="1" fill="#fff"/><rect x="7" y="1" width="3" height="10" rx="1" fill="#fff"/></svg>
+          : <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 1l8 5-8 5V1z" fill="#fff"/></svg>
+        }
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.purple, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 4 }}>{nome}</div>
+        <div style={{ height: 4, background: "rgba(83,74,183,0.2)", borderRadius: 2, overflow: "hidden", cursor: "pointer" }}
+          onClick={e => {
+            if (!audioRef.current) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            audioRef.current.currentTime = x * audioRef.current.duration;
+          }}>
+          <div style={{ height: "100%", width: `${progress}%`, background: C.purple, borderRadius: 2, transition: "width 0.1s" }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: C.purple, flexShrink: 0 }}>{formatTime(duration)}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// COMPONENTE PRINCIPALE
+// ─────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.9px", marginBottom: 8 }}>{children}</div>;
+}
+
+export default function SezioneStorage() {
+  const [clienti, setClienti]             = useState<Cliente[]>([]);
+  const [clienteSel, setClienteSel]       = useState<Cliente | null>(null);
+  const [files, setFiles]                 = useState<AudioFile[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [nuovoBrano, setNuovoBrano]       = useState("");
+  const [uploading, setUploading]         = useState(false);
+  const [toast, setToast]                 = useState<string | null>(null);
+  const [showNuovoBrano, setShowNuovoBrano] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [branoPerUpload, setBranoPerUpload] = useState<string | null>(null);
+
+  const mostraToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  useEffect(() => {
+    supaReq("/clienti?order=nome").then(rows => setClienti(rows ?? [])).catch(() => {});
+  }, []);
+
+  const caricaFiles = async (email: string) => {
+    setLoading(true);
+    try {
+      const rows = await supaReq(`/audio_files?cliente_email=eq.${encodeURIComponent(email)}&order=brano,creato_il`);
+      setFiles(rows ?? []);
+    } catch { setFiles([]); }
+    finally { setLoading(false); }
+  };
+
+  const handleSelezionaCliente = (c: Cliente) => {
+    setClienteSel(c);
+    caricaFiles(c.email);
+  };
+
+  const handleCreaBrano = async () => {
+    if (!nuovoBrano.trim() || !clienteSel) return;
+    setShowNuovoBrano(false);
+    setNuovoBrano("");
+    mostraToast(`✓ Cartella "${nuovoBrano.trim()}" creata!`);
+    // La cartella viene creata implicitamente al primo upload
+    setBranoPerUpload(nuovoBrano.trim());
+  };
+
+  const handleUpload = async (file: File, brano: string) => {
+    if (!clienteSel) return;
+    setUploading(true);
+    try {
+      const sanitizedEmail = clienteSel.email.replace(/[^a-zA-Z0-9]/g, "_");
+      const sanitizedBrano = brano.replace(/[^a-zA-Z0-9 ]/g, "_");
+      const sanitizedNome  = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${sanitizedEmail}/${sanitizedBrano}/${sanitizedNome}`;
+
+      await uploadR2(file, path);
+
+      // Salva in Supabase
+      const rows = await supaReq("/audio_files", {
+        method: "POST",
+        body: JSON.stringify({ cliente_email: clienteSel.email, brano, nome_file: file.name, storage_path: path }),
+      });
+      const nuovoFile = Array.isArray(rows) ? rows[0] : rows;
+      setFiles(prev => [...prev, nuovoFile].sort((a, b) => a.brano.localeCompare(b.brano)));
+      mostraToast(`✓ "${file.name}" caricato!`);
+    } catch (e) {
+      console.error(e);
+      alert("Errore nel caricamento. Controlla la connessione.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleElimina = async (f: AudioFile) => {
+    if (!confirm(`Eliminare "${f.nome_file}"?`)) return;
+    try {
+      await deleteR2(f.storage_path);
+      await supaReq(`/audio_files?id=eq.${f.id}`, { method: "DELETE", headers: { "Prefer": "return=minimal" } });
+      setFiles(prev => prev.filter(x => x.id !== f.id));
+      mostraToast("File eliminato");
+    } catch { alert("Errore nell'eliminazione."); }
+  };
+
+  // Raggruppa file per brano
+  const perBrano = files.reduce((acc, f) => {
+    if (!acc[f.brano]) acc[f.brano] = [];
+    acc[f.brano].push(f);
+    return acc;
+  }, {} as Record<string, AudioFile[]>);
+
+  const brani = Object.keys(perBrano).sort();
+
+  return (
+    <div style={{ width: "100%", minHeight: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
+
+      {toast && <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", background: C.green, color: "#fff", borderRadius: 12, padding: "11px 20px", fontSize: 13, fontWeight: 700, zIndex: 300, whiteSpace: "nowrap" }}>{toast}</div>}
+
+      {/* Input file nascosto */}
+      <input ref={fileInputRef} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" style={{ display: "none" }}
+        onChange={async e => {
+          const file = e.target.files?.[0];
+          if (file && branoPerUpload) {
+            await handleUpload(file, branoPerUpload);
+            setBranoPerUpload(null);
+          }
+          e.target.value = "";
+        }} />
+
+      {/* HEADER */}
+      <div style={{ background: C.dark, paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)", paddingBottom: 14, paddingLeft: 16, paddingRight: 16, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            {clienteSel ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={() => { setClienteSel(null); setFiles([]); }} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M8 2L4 6l4 4" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>{clienteSel.nome}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{files.length} file · {brani.length} brani</div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Storage Audio</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>Seleziona un cliente</div>
+              </div>
+            )}
+          </div>
+          {clienteSel && (
+            <button onClick={() => setShowNuovoBrano(true)} style={{ width: 36, height: 36, borderRadius: "50%", background: C.orange, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* MODAL NUOVO BRANO */}
+      {showNuovoBrano && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end" }} onClick={() => setShowNuovoBrano(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 430, margin: "0 auto", background: "#fff", borderRadius: "16px 16px 0 0", padding: "20px 16px 32px" }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 14 }}>Nuovo brano</div>
+            <input type="text" placeholder="es. Come Le Onde, Intro Beat…" value={nuovoBrano} onChange={e => setNuovoBrano(e.target.value)}
+              autoFocus onKeyDown={e => e.key === "Enter" && handleCreaBrano()}
+              style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: `0.5px solid ${C.border}`, fontSize: 14, boxSizing: "border-box" as const, outline: "none", marginBottom: 12 }} />
+            <button onClick={handleCreaBrano} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: C.orange, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+              Crea cartella
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* BODY */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)", display: "flex", flexDirection: "column", gap: 12 }}>
+
+        {!clienteSel ? (
+          /* LISTA CLIENTI */
+          <>
+            <SectionLabel>Seleziona cliente</SectionLabel>
+            {clienti.map((c, i) => {
+              const colors = ["#E8610A","#534AB7","#1D9E75","#BA7517","#D4537E","#378ADD"];
+              const col = colors[i % colors.length];
+              return (
+                <div key={c.id} onClick={() => handleSelezionaCliente(c)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "12px", cursor: "pointer" }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{iniziali(c.nome)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{c.nome}</div>
+                    <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{c.email}</div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2l4 5-4 5" stroke="#ddd" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+              );
+            })}
+          </>
+        ) : loading ? (
+          <div style={{ textAlign: "center", padding: "32px 0", fontSize: 13, color: "#aaa" }}>Caricamento…</div>
+        ) : (
+          /* BRANI E FILE */
+          <>
+            {uploading && (
+              <div style={{ background: C.purpleLight, borderRadius: 10, padding: "12px 14px", fontSize: 13, fontWeight: 600, color: C.purple, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${C.purple}`, borderTopColor: "transparent", animation: "spin 1s linear infinite" }} />
+                Caricamento in corso…
+              </div>
+            )}
+
+            {brani.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 0" }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🎵</div>
+                <div style={{ fontSize: 14, color: "#555", fontWeight: 600, marginBottom: 6 }}>Nessun brano ancora</div>
+                <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Crea una cartella per iniziare a caricare file</div>
+                <button onClick={() => setShowNuovoBrano(true)} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  + Nuovo brano
+                </button>
+              </div>
+            ) : (
+              brani.map(brano => (
+                <div key={brano} style={{ background: "#fff", border: `0.5px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                  {/* Header brano */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16 }}>🎵</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{brano}</span>
+                      <span style={{ fontSize: 10, color: "#aaa", background: "#f0f0f0", padding: "2px 8px", borderRadius: 8 }}>{perBrano[brano].length} file</span>
+                    </div>
+                    <button onClick={() => { setBranoPerUpload(brano); setTimeout(() => fileInputRef.current?.click(), 100); }}
+                      style={{ fontSize: 11, fontWeight: 600, color: C.orange, background: C.orangeLight, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" }}>
+                      + Carica
+                    </button>
+                  </div>
+
+                  {/* File del brano */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {perBrano[brano].map(f => (
+                      <div key={f.id}>
+                        <AudioPlayer url={`${PUBLIC_URL}/${f.storage_path}`} nome={f.nome_file} />
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+                          <button onClick={() => handleElimina(f)} style={{ fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer", padding: "2px 4px" }}>
+                            Elimina
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+
+            {/* Bottone aggiungi brano in fondo */}
+            {brani.length > 0 && (
+              <button onClick={() => setShowNuovoBrano(true)} style={{ width: "100%", padding: "13px", borderRadius: 12, border: `1.5px dashed ${C.border}`, background: "#fff", color: "#888", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                + Nuovo brano
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
