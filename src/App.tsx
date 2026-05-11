@@ -17,6 +17,8 @@ import SchedaSessione from "./SchedaSessione";
 import SezioneClienti from "./SchedaCliente";
 import SezioneFatture from "./SezioneFatture";
 import SezioneCalendario from "./SezioneCalendario";
+import SezioneDisponibilita from "./SezioneDisponibilita";
+import SezioneRichieste from "./SezioneRichieste";
 
 const C = {
   orange:      "#E8610A",
@@ -118,6 +120,8 @@ function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabI
     { id: "calendario", label: "Calendario", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "clienti",    label: "Clienti",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "disponibilita", label: "Disponibilità", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 8h6M8 5v6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+{ id: "richieste",    label: "Richieste",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M8 5v4M8 11v.5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
   ];
   return (
     <div className="bc-sidebar">
@@ -381,6 +385,8 @@ export default function App() {
     if (tab === "clienti")         setSchermata("clienti");
     else if (tab === "fatture")    setSchermata("fatture");
     else if (tab === "calendario") setSchermata("calendario");
+      else if (tab === "disponibilita") setSchermata("disponibilita");
+else if (tab === "richieste")     setSchermata("richieste");
     else setSchermata("home");
   };
 
@@ -466,6 +472,14 @@ export default function App() {
       <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
     );
   }
+
+  if (schermata === "disponibilita") {
+  return wrapWithLayout(<SezioneDisponibilita />);
+}
+
+if (schermata === "richieste") {
+  return wrapWithLayout(<SezioneRichieste />);
+}
 
   // ── HOME ──
   return (
