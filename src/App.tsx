@@ -1,8 +1,6 @@
 /**
  * BEATCAVE STUDIO — App principale
  * File: App.tsx
- * - Dashboard con sessioni future invece del calendario mini
- * - Archiviazione automatica sessioni passate
  */
 
 import { useState, useEffect } from "react";
@@ -24,28 +22,40 @@ const C = {
   orange:      "#E8610A",
   orangeMid:   "#F97316",
   orangeLight: "#FEF0E6",
-  dark:       "#0D0D0D",
-  green:      "#1D9E75",
-  greenLight: "#E1F5EE",
-  greenDark:  "#0F6E56",
-  purple:     "#534AB7",
-  amber:      "#BA7517",
-  amberLight: "#FAEEDA",
-  amberDark:  "#854F0B",
-  border:     "rgba(0,0,0,0.08)",
-  bg:         "#f5f5f5",
-  surface:    "rgba(0,0,0,0.04)",
+  dark:        "#0D0D0D",
+  green:       "#1D9E75",
+  greenLight:  "#E1F5EE",
+  greenDark:   "#0F6E56",
+  purple:      "#534AB7",
+  amber:       "#BA7517",
+  amberLight:  "#FAEEDA",
+  amberDark:   "#854F0B",
+  border:      "rgba(0,0,0,0.08)",
+  bg:          "#f5f5f5",
+  surface:     "rgba(0,0,0,0.04)",
 } as const;
 
-type TipoSessione = "Registrazione" | "Mixing" | "Produzione" | "Mastering";
+type TipoSessione  = "Registrazione" | "Mixing" | "Produzione" | "Mastering";
 type StatoSessione = "in_corso" | "confermata" | "da_confermare";
 
 const SESSION_COLORS: Record<TipoSessione, string> = {
   Registrazione: C.orange, Mixing: C.green, Produzione: C.purple, Mastering: C.amber,
 };
 
-const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+const MESI       = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 const MESI_BREVI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+
+const BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
+const KEY  = "sb_publishable_BGd9aD4jqt6K6txVpDCifA_C-IvCaP_";
+const H    = { "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json" };
+
+async function fetchRichiesteInAttesa(): Promise<number> {
+  try {
+    const res = await fetch(`${BASE}/richieste?stato=eq.in_attesa&select=id`, { headers: H });
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch { return 0; }
+}
 
 function oggiISO(): string { return new Date().toISOString().split("T")[0]; }
 
@@ -111,17 +121,45 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
   );
 }
 
-function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabId) => void }) {
+// ── MENU "ALTRO" MOBILE ──
+function MenuAltro({ onClose, onChange, richiesteInAttesa }: { onClose: () => void; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: 70, left: 0, right: 0, background: "#fff", borderRadius: "16px 16px 0 0", padding: "16px 16px 8px" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12, paddingLeft: 4 }}>Altro</div>
+        {[
+          { id: "fatture"       as TabId, label: "Fatture",       emoji: "📄" },
+          { id: "disponibilita" as TabId, label: "Disponibilità", emoji: "📅" },
+          { id: "richieste"     as TabId, label: "Richieste",     emoji: "📬", badge: richiesteInAttesa },
+        ].map(item => (
+          <button key={item.id} onClick={() => { onChange(item.id); onClose(); }}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 10, border: "none", background: "none", cursor: "pointer", marginBottom: 4, position: "relative" }}>
+            <span style={{ fontSize: 22 }}>{item.emoji}</span>
+            <span style={{ fontSize: 15, fontWeight: 500, color: "#222" }}>{item.label}</span>
+            {item.badge && item.badge > 0 && (
+              <div style={{ marginLeft: "auto", background: "#E24B4A", color: "#fff", fontSize: 11, fontWeight: 700, width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {item.badge}
+              </div>
+            )}
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginLeft: item.badge ? 8 : "auto" }}><path d="M5 2l4 5-4 5" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ activeTab, onChange, richiesteInAttesa }: { activeTab: TabId; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
   const d = new Date();
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]}`;
-  const tabs: { id: TabId; label: string; icon: (a: boolean) => JSX.Element }[] = [
-    { id: "home",       label: "Dashboard",  icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange : "rgba(255,255,255,0.4)"}/><rect x="9" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="2" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="9" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"44" : "rgba(255,255,255,0.1)"}/></svg> },
-    { id: "calendario", label: "Calendario", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "clienti",    label: "Clienti",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "disponibilita", label: "Disponibilità", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 8h6M8 5v6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-{ id: "richieste",    label: "Richieste",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M8 5v4M8 11v.5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+  const tabs: { id: TabId; label: string; badge?: number; icon: (a: boolean) => JSX.Element }[] = [
+    { id: "home",          label: "Dashboard",    icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange : "rgba(255,255,255,0.4)"}/><rect x="9" y="2" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="2" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"88" : "rgba(255,255,255,0.2)"}/><rect x="9" y="9" width="5" height="5" rx="1.5" fill={a ? C.orange+"44" : "rgba(255,255,255,0.1)"}/></svg> },
+    { id: "calendario",    label: "Calendario",   icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="10" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 2v3M11 2v3M2 7h12" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "clienti",       label: "Clienti",      icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M2 14c0-2.761 2.686-5 6-5s6 2.239 6 5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "fatture",       label: "Fatture",      icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "disponibilita", label: "Disponibilità",icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 8h6M8 5v6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "richieste",     label: "Richieste",    badge: richiesteInAttesa, icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M8 5v4M8 11v.5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
   ];
   return (
     <div className="bc-sidebar">
@@ -133,7 +171,10 @@ function Sidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (t: TabI
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => onChange(tab.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: activeTab === tab.id ? "rgba(232,97,10,0.15)" : "transparent", marginBottom: 2 }}>
             {tab.icon(activeTab === tab.id)}
-            <span style={{ fontSize: 13, fontWeight: 500, color: activeTab === tab.id ? "#fff" : "rgba(255,255,255,0.5)" }}>{tab.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: activeTab === tab.id ? "#fff" : "rgba(255,255,255,0.5)", flex: 1, textAlign: "left" }}>{tab.label}</span>
+            {tab.badge && tab.badge > 0 && (
+              <div style={{ background: "#E24B4A", color: "#fff", fontSize: 10, fontWeight: 700, width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tab.badge}</div>
+            )}
           </button>
         ))}
       </div>
@@ -161,9 +202,9 @@ function StatCards({ sessioni, clienti }: { sessioni: SessioneCompleta[]; client
   const sessioniOggi = sessioni.filter(s => s.data === oggi);
   const incassoOggi = sessioniOggi.filter(s => s.pagato).reduce((acc, s) => acc + s.prezzo, 0);
   const items = [
-    { valore: String(sessioniOggi.length), label: "Sessioni oggi",  colore: C.orange },
-    { valore: `€${incassoOggi}`,           label: "Incasso oggi",   colore: C.green  },
-    { valore: String(clienti.length),       label: "Clienti",        colore: null      },
+    { valore: String(sessioniOggi.length), label: "Sessioni oggi", colore: C.orange },
+    { valore: `€${incassoOggi}`,           label: "Incasso oggi",  colore: C.green  },
+    { valore: String(clienti.length),      label: "Clienti",       colore: null      },
   ];
   return (
     <div style={{ padding: "12px 16px 0" }}>
@@ -180,47 +221,30 @@ function StatCards({ sessioni, clienti }: { sessioni: SessioneCompleta[]; client
   );
 }
 
-// ── LISTA SESSIONI FUTURE ──
 function SessioniFuture({ sessioni, onTap }: { sessioni: SessioneCompleta[]; onTap: (s: SessioneCompleta) => void }) {
   const oggi = oggiISO();
-
-  // Raggruppa per data
   const perGiorno = sessioni.reduce((acc, s) => {
     if (!acc[s.data]) acc[s.data] = [];
     acc[s.data].push(s);
     return acc;
   }, {} as Record<string, SessioneCompleta[]>);
-
   const date = Object.keys(perGiorno).sort();
 
   if (sessioni.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "32px 0" }}>
-        <div style={{ fontSize: 13, color: "#aaa" }}>Nessuna sessione in programma</div>
-      </div>
-    );
+    return <div style={{ textAlign: "center", padding: "32px 0" }}><div style={{ fontSize: 13, color: "#aaa" }}>Nessuna sessione in programma</div></div>;
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {date.map(data => (
         <div key={data}>
-          {/* Intestazione giorno */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <div style={{
-              fontSize: 12, fontWeight: 700,
-              color: data === oggi ? C.orange : "#555",
-              background: data === oggi ? C.orangeLight : "transparent",
-              padding: data === oggi ? "3px 10px" : "3px 0",
-              borderRadius: 20,
-            }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: data === oggi ? C.orange : "#555", background: data === oggi ? C.orangeLight : "transparent", padding: data === oggi ? "3px 10px" : "3px 0", borderRadius: 20 }}>
               {formatDataBreve(data)}
             </div>
             <div style={{ flex: 1, height: "0.5px", background: C.border }} />
             <div style={{ fontSize: 11, color: "#aaa" }}>{perGiorno[data].length} sess.</div>
           </div>
-
-          {/* Sessioni del giorno */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {perGiorno[data].map(s => {
               const badge = badgeConfig(s.stato as StatoSessione);
@@ -248,22 +272,43 @@ function SessioniFuture({ sessioni, onTap }: { sessioni: SessioneCompleta[]; onT
   );
 }
 
-function TabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => void }) {
-  const tabs: { id: TabId; label: string; icon: (a: boolean) => JSX.Element }[] = [
-    { id: "home",       label: "Home",       icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="7" height="7" rx="2" fill={a ? C.orange : "#ccc"}/><rect x="12" y="3" width="7" height="7" rx="2" fill={a ? C.orange+"88" : "#e5e5e5"}/><rect x="3" y="12" width="7" height="7" rx="2" fill={a ? C.orange+"88" : "#e5e5e5"}/><rect x="12" y="12" width="7" height="7" rx="2" fill={a ? C.orange+"44" : "#ebebeb"}/></svg> },
-    { id: "calendario", label: "Calendario", icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="14" rx="2.5" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M8 3v4M14 3v4M3 10h16" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
-    { id: "clienti",    label: "Clienti",    icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M3 19c0-3.866 3.582-7 8-7s8 3.134 8 7" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
-    { id: "fatture",    label: "Fatture",    icon: (a) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="4" y="2" width="14" height="18" rx="2.5" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M8 8h6M8 11.5h6M8 15h4" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
+// ── TAB BAR MOBILE con tab "Altro" ──
+function TabBar({ active, onChange, richiesteInAttesa }: { active: TabId; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
+  const [showAltro, setShowAltro] = useState(false);
+
+  const isAltroActive = ["fatture","disponibilita","richieste"].includes(active);
+  const hasBadge = richiesteInAttesa > 0;
+
+  const tabs = [
+    { id: "home"       as TabId, label: "Home",       icon: (a: boolean) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="7" height="7" rx="2" fill={a ? C.orange : "#ccc"}/><rect x="12" y="3" width="7" height="7" rx="2" fill={a ? C.orange+"88" : "#e5e5e5"}/><rect x="3" y="12" width="7" height="7" rx="2" fill={a ? C.orange+"88" : "#e5e5e5"}/><rect x="12" y="12" width="7" height="7" rx="2" fill={a ? C.orange+"44" : "#ebebeb"}/></svg> },
+    { id: "calendario" as TabId, label: "Calendario", icon: (a: boolean) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="14" rx="2.5" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M8 3v4M14 3v4M3 10h16" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
+    { id: "clienti"    as TabId, label: "Clienti",    icon: (a: boolean) => <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5"/><path d="M3 19c0-3.866 3.582-7 8-7s8 3.134 8 7" stroke={a ? C.orange : "#ccc"} strokeWidth="1.5" strokeLinecap="round"/></svg> },
   ];
+
   return (
-    <div className="bc-tabbar" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-      {tabs.map(tab => (
-        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer" }}>
-          {tab.icon(tab.id === active)}
-          <span style={{ fontSize: 10, fontWeight: tab.id === active ? 700 : 400, color: tab.id === active ? C.orange : "#bbb" }}>{tab.label}</span>
+    <>
+      {showAltro && <MenuAltro onClose={() => setShowAltro(false)} onChange={id => { onChange(id); setShowAltro(false); }} richiesteInAttesa={richiesteInAttesa} />}
+      <div className="bc-tabbar" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => onChange(tab.id)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer" }}>
+            {tab.icon(tab.id === active)}
+            <span style={{ fontSize: 10, fontWeight: tab.id === active ? 700 : 400, color: tab.id === active ? C.orange : "#bbb" }}>{tab.label}</span>
+          </button>
+        ))}
+        {/* Tab ALTRO */}
+        <button onClick={() => setShowAltro(true)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", position: "relative" }}>
+          {hasBadge && (
+            <div style={{ position: "absolute", top: 6, right: "50%", transform: "translateX(8px)", background: "#E24B4A", width: 8, height: 8, borderRadius: "50%", border: "1.5px solid #fff" }} />
+          )}
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="6" cy="11" r="1.5" fill={isAltroActive ? C.orange : "#ccc"}/>
+            <circle cx="11" cy="11" r="1.5" fill={isAltroActive ? C.orange : "#ccc"}/>
+            <circle cx="16" cy="11" r="1.5" fill={isAltroActive ? C.orange : "#ccc"}/>
+          </svg>
+          <span style={{ fontSize: 10, fontWeight: isAltroActive ? 700 : 400, color: isAltroActive ? C.orange : "#bbb" }}>Altro</span>
         </button>
-      ))}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -280,6 +325,7 @@ export default function App() {
   const [loading, setLoading]               = useState(true);
   const [errore, setErrore]                 = useState<string | null>(null);
   const [dataPreselezionata, setDataPresel] = useState<string | undefined>(undefined);
+  const [richiesteInAttesa, setRichieste]   = useState(0);
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -292,12 +338,14 @@ export default function App() {
     setLoading(true);
     setErrore(null);
     try {
-      const [righeSessioni, righeClienti] = await Promise.all([
+      const [righeSessioni, righeClienti, numRichieste] = await Promise.all([
         fetchSessioniFuture(),
         fetchClienti(),
+        fetchRichiesteInAttesa(),
       ]);
       setSessioni(righeSessioni.map(dbToSessione));
       setClienti(righeClienti.map(dbToCliente));
+      setRichieste(numRichieste);
     } catch {
       setErrore("Impossibile connettersi al database. Controlla la connessione.");
     } finally {
@@ -306,6 +354,14 @@ export default function App() {
   };
 
   useEffect(() => { caricaDati(); }, []);
+
+  // Ricarica il badge ogni 30 secondi
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRichiesteInAttesa().then(setRichieste);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNuovoCliente = async (dati: { nome: string; email: string; telefono: string }): Promise<Cliente> => {
     const row = await inserisciCliente(dati);
@@ -323,7 +379,6 @@ export default function App() {
         note: p.note, pacchetto_id: p.pacchettoId ?? null,
       });
       const nuova = dbToSessione(row);
-      // Aggiunge alla lista solo se è futura
       if (nuova.data >= oggiISO()) {
         setSessioni(prev => [...prev, nuova].sort((a, b) => a.data.localeCompare(b.data) || a.oraInizio.localeCompare(b.oraInizio)));
       }
@@ -385,8 +440,8 @@ export default function App() {
     if (tab === "clienti")         setSchermata("clienti");
     else if (tab === "fatture")    setSchermata("fatture");
     else if (tab === "calendario") setSchermata("calendario");
-      else if (tab === "disponibilita") setSchermata("disponibilita");
-else if (tab === "richieste")     setSchermata("richieste");
+    else if (tab === "disponibilita") setSchermata("disponibilita");
+    else if (tab === "richieste")  { setSchermata("richieste"); fetchRichiesteInAttesa().then(setRichieste); }
     else setSchermata("home");
   };
 
@@ -417,7 +472,7 @@ else if (tab === "richieste")     setSchermata("richieste");
   if (schermata === "scheda-sessione" && sessioneAttiva) {
     return (
       <div style={{ display: "flex", width: "100%", minHeight: "100dvh", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-        <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+        <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <SchedaSessione
             sessione={sessioneAttiva}
@@ -436,55 +491,26 @@ else if (tab === "richieste")     setSchermata("richieste");
 
   const wrapWithLayout = (content: JSX.Element) => (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-      <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
       <div className="bc-main" style={{ background: C.bg }}>
         {content}
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} />
+          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
         </div>
       </div>
     </div>
   );
 
-  if (schermata === "calendario") {
-    return wrapWithLayout(
-      <SezioneCalendario
-        onApriSessione={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }}
-        onNuovaPrenotazione={aprireNuovaPrenotazione}
-      />
-    );
-  }
-
-  if (schermata === "clienti") {
-    return wrapWithLayout(
-      <SezioneClienti
-        clienti={clienti} sessioni={sessioni}
-        onClose={() => { setSchermata("home"); setActiveTab("home"); }}
-        onAggiungiCliente={handleAggiungiCliente}
-        onModificaCliente={handleModificaCliente}
-        onNuovaPrenotazione={(_id) => aprireNuovaPrenotazione()}
-      />
-    );
-  }
-
-  if (schermata === "fatture") {
-    return wrapWithLayout(
-      <SezioneFatture clienti={clienti} sessioniOggi={sessioni} />
-    );
-  }
-
-  if (schermata === "disponibilita") {
-  return wrapWithLayout(<SezioneDisponibilita />);
-}
-
-if (schermata === "richieste") {
-  return wrapWithLayout(<SezioneRichieste />);
-}
+  if (schermata === "calendario")    return wrapWithLayout(<SezioneCalendario onApriSessione={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }} onNuovaPrenotazione={aprireNuovaPrenotazione} />);
+  if (schermata === "clienti")       return wrapWithLayout(<SezioneClienti clienti={clienti} sessioni={sessioni} onClose={() => { setSchermata("home"); setActiveTab("home"); }} onAggiungiCliente={handleAggiungiCliente} onModificaCliente={handleModificaCliente} onNuovaPrenotazione={(_id) => aprireNuovaPrenotazione()} />);
+  if (schermata === "fatture")       return wrapWithLayout(<SezioneFatture clienti={clienti} sessioniOggi={sessioni} />);
+  if (schermata === "disponibilita") return wrapWithLayout(<SezioneDisponibilita />);
+  if (schermata === "richieste")     return wrapWithLayout(<SezioneRichieste />);
 
   // ── HOME ──
   return (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-      <Sidebar activeTab={activeTab} onChange={handleTabChange} />
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
       <div className="bc-main" style={{ background: C.bg }}>
         <MobileTopbar />
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
@@ -492,10 +518,7 @@ if (schermata === "richieste") {
           <Divider />
           <div style={{ paddingTop: 14, padding: "14px 16px 0" }}>
             <SectionLabel>Prossime sessioni</SectionLabel>
-            <SessioniFuture
-              sessioni={sessioni}
-              onTap={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }}
-            />
+            <SessioniFuture sessioni={sessioni} onTap={s => { setSessioneAttiva(s); setSchermata("scheda-sessione"); }} />
           </div>
           <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
             <button onClick={() => aprireNuovaPrenotazione()} style={{ width: 52, height: 52, borderRadius: "50%", background: C.orange, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 14px ${C.orange}55` }}>
@@ -504,7 +527,7 @@ if (schermata === "richieste") {
           </div>
         </div>
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} />
+          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
         </div>
       </div>
     </div>
