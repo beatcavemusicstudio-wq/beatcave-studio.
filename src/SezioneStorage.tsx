@@ -47,14 +47,16 @@ function iniziali(nome: string): string {
 // ── AWS Signature V4 helpers ──
 
 async function hmacSha256(key: unknown, data: string): Promise<ArrayBuffer> {
-  // @ts-ignore
-  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cryptoKey = await (crypto.subtle.importKey as any)(
+    "raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
 async function sha256hex(data: unknown): Promise<string> {
-  // @ts-ignore
-  const hash = await crypto.subtle.digest("SHA-256", data);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hash = await (crypto.subtle.digest as any)("SHA-256", data);
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
