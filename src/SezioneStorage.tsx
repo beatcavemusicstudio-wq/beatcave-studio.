@@ -347,7 +347,7 @@ export default function SezioneStorage() {
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Storage Audio</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Beatcave <span style={{ color: C.orange }}>Cloud</span></div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>Seleziona un cliente</div>
               </div>
             )}
