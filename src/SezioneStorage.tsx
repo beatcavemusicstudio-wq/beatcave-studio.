@@ -47,22 +47,24 @@ function iniziali(nome: string): string {
 // ── AWS Signature V4 helpers ──
 
 async function hmacSha256(key: ArrayBuffer | Uint8Array | string, data: string): Promise<ArrayBuffer> {
-  let keyData: ArrayBuffer | Uint8Array;
+  let keyBuffer: ArrayBuffer;
   if (typeof key === "string") {
-    keyData = new TextEncoder().encode(key);
+    keyBuffer = new TextEncoder().encode(key).buffer as ArrayBuffer;
+  } else if (key instanceof Uint8Array) {
+    keyBuffer = key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
   } else {
-    keyData = key;
+    keyBuffer = key;
   }
-  const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const cryptoKey = await crypto.subtle.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
 async function sha256hex(data: ArrayBuffer | Uint8Array | string): Promise<string> {
   let buf: ArrayBuffer;
   if (typeof data === "string") {
-    buf = new TextEncoder().encode(data);
+    buf = new TextEncoder().encode(data).buffer as ArrayBuffer;
   } else if (data instanceof Uint8Array) {
-    buf = data.buffer as ArrayBuffer;
+    buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
   } else {
     buf = data;
   }
