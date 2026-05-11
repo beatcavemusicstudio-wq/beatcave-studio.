@@ -17,6 +17,7 @@ import SezioneFatture from "./SezioneFatture";
 import SezioneCalendario from "./SezioneCalendario";
 import SezioneDisponibilita from "./SezioneDisponibilita";
 import SezioneRichieste from "./SezioneRichieste";
+import SezioneStorage from "./SezioneStorage";
 
 const C = {
   orange:      "#E8610A",
@@ -131,6 +132,7 @@ function MenuAltro({ onClose, onChange, richiesteInAttesa }: { onClose: () => vo
           { id: "fatture"       as TabId, label: "Fatture",       emoji: "📄" },
           { id: "disponibilita" as TabId, label: "Disponibilità", emoji: "📅" },
           { id: "richieste"     as TabId, label: "Richieste",     emoji: "📬", badge: richiesteInAttesa },
+      { id: "storage" as TabId, label: "Beatcave Cloud", emoji: "☁️" },
         ].map(item => (
           <button key={item.id} onClick={() => { onChange(item.id); onClose(); }}
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 10, border: "none", background: "none", cursor: "pointer", marginBottom: 4, position: "relative" }}>
@@ -443,6 +445,7 @@ export default function App() {
     else if (tab === "disponibilita") setSchermata("disponibilita");
     else if (tab === "richieste")  { setSchermata("richieste"); fetchRichiesteInAttesa().then(setRichieste); }
     else setSchermata("home");
+    else if (tab === "storage") setSchermata("storage");
   };
 
   const aprireNuovaPrenotazione = (data?: string) => {
@@ -506,6 +509,7 @@ export default function App() {
   if (schermata === "fatture")       return wrapWithLayout(<SezioneFatture clienti={clienti} sessioniOggi={sessioni} />);
   if (schermata === "disponibilita") return wrapWithLayout(<SezioneDisponibilita />);
   if (schermata === "richieste")     return wrapWithLayout(<SezioneRichieste />);
+  if (schermata === "storage") return wrapWithLayout(<SezioneStorage />);
 
   // ── HOME ──
   return (
