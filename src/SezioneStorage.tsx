@@ -46,29 +46,15 @@ function iniziali(nome: string): string {
 
 // ── AWS Signature V4 helpers ──
 
-async function hmacSha256(key: ArrayBuffer | Uint8Array | string, data: string): Promise<ArrayBuffer> {
-  let keyBuffer: ArrayBuffer;
-  if (typeof key === "string") {
-    keyBuffer = new TextEncoder().encode(key).buffer as ArrayBuffer;
-  } else if (key instanceof Uint8Array) {
-    keyBuffer = key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
-  } else {
-    keyBuffer = key;
-  }
-  const cryptoKey = await crypto.subtle.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+async function hmacSha256(key: unknown, data: string): Promise<ArrayBuffer> {
+  // @ts-ignore
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
-async function sha256hex(data: ArrayBuffer | Uint8Array | string): Promise<string> {
-  let buf: ArrayBuffer;
-  if (typeof data === "string") {
-    buf = new TextEncoder().encode(data).buffer as ArrayBuffer;
-  } else if (data instanceof Uint8Array) {
-    buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-  } else {
-    buf = data;
-  }
-  const hash = await crypto.subtle.digest("SHA-256", buf);
+async function sha256hex(data: unknown): Promise<string> {
+  // @ts-ignore
+  const hash = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
