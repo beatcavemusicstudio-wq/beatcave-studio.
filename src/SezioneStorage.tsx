@@ -1,26 +1,15 @@
 /**
  * BEATCAVE STUDIO — Sezione Storage Audio
  * File: SezioneStorage.tsx
- *
- * Funzionalità:
- *  - Seleziona cliente
- *  - Crea cartelle per brano
- *  - Carica file MP3/WAV
- *  - Player audio inline
- *  - Elimina file
  */
 
 import { useState, useEffect, useRef } from "react";
 
-// ─────────────────────────────────────────────────────────
-// CONFIGURAZIONE
-// ─────────────────────────────────────────────────────────
-
-const R2_ENDPOINT  = "https://5152ba61567f02cdbb439af3630b10b4.r2.cloudflarestorage.com";
-const R2_BUCKET    = "beatcave-audio";
-const R2_ACCESS    = "8880ad678671b9e138a38986ea03a50e";
-const R2_SECRET    = "0b17e135a1b61c007da4a4205f37474af5da7c58790f6db861dfb9b56385be74";
-const PUBLIC_URL   = "https://audio.beatcavestudio.it";
+const R2_ENDPOINT = "https://5152ba61567f02cdbb439af3630b10b4.r2.cloudflarestorage.com";
+const R2_BUCKET   = "beatcave-audio";
+const R2_ACCESS   = "8880ad678671b9e138a38986ea03a50e";
+const R2_SECRET   = "0b17e135a1b61c007da4a4205f37474af5da7c58790f6db861dfb9b56385be74";
+const PUBLIC_URL  = "https://audio.beatcavestudio.it";
 
 const SUPA_BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
 const SUPA_KEY  = "sb_publishable_BGd9aD4jqt6K6txVpDCifA_C-IvCaP_";
@@ -32,10 +21,6 @@ async function supaReq(path: string, options?: RequestInit) {
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
-
-// ─────────────────────────────────────────────────────────
-// DESIGN SYSTEM
-// ─────────────────────────────────────────────────────────
 
 const C = {
   orange:      "#E8610A",
@@ -52,30 +37,35 @@ const C = {
   bg:          "#f5f5f5",
 } as const;
 
-// ─────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────
-
 interface Cliente { id: number; nome: string; email: string; }
 interface AudioFile { id: number; cliente_email: string; brano: string; nome_file: string; storage_path: string; creato_il: string; }
-
-// ─────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────
 
 function iniziali(nome: string): string {
   return nome.split(" ").filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
 }
 
-// Genera firma HMAC-SHA256 per R2 (AWS Signature V4)
+// ── AWS Signature V4 helpers ──
+
 async function hmacSha256(key: ArrayBuffer | Uint8Array | string, data: string): Promise<ArrayBuffer> {
-  const keyData = typeof key === "string" ? new TextEncoder().encode(key) : key;
+  let keyData: ArrayBuffer | Uint8Array;
+  if (typeof key === "string") {
+    keyData = new TextEncoder().encode(key);
+  } else {
+    keyData = key;
+  }
   const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
-async function sha256hex(data: ArrayBuffer | string): Promise<string> {
-  const buf = typeof data === "string" ? new TextEncoder().encode(data) : data;
+async function sha256hex(data: ArrayBuffer | Uint8Array | string): Promise<string> {
+  let buf: ArrayBuffer;
+  if (typeof data === "string") {
+    buf = new TextEncoder().encode(data);
+  } else if (data instanceof Uint8Array) {
+    buf = data.buffer as ArrayBuffer;
+  } else {
+    buf = data;
+  }
   const hash = await crypto.subtle.digest("SHA-256", buf);
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -84,53 +74,49 @@ function toHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function uploadR2(file: File, path: string): Promise<string> {
+async function buildAuthHeaders(method: string, objectKey: string, contentType: string, fileBuffer: ArrayBuffer | null): Promise<Record<string, string>> {
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
   const shortDate = dateStamp.slice(0, 8);
   const region = "auto";
   const service = "s3";
-
   const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
-  const objectKey = `${R2_BUCKET}/${path}`;
-  const url = `${R2_ENDPOINT}/${objectKey}`;
 
-  const fileBuffer = await file.arrayBuffer();
-  const payloadHash = await sha256hex(fileBuffer);
+  const payloadHash = fileBuffer ? await sha256hex(fileBuffer) : await sha256hex(new ArrayBuffer(0));
 
   const headers: Record<string, string> = {
     "host": host,
     "x-amz-content-sha256": payloadHash,
     "x-amz-date": dateStamp,
-    "content-type": file.type || "audio/mpeg",
   };
+  if (contentType) headers["content-type"] = contentType;
 
   const signedHeaders = Object.keys(headers).sort().join(";");
   const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join("\n") + "\n";
-
-  const canonicalRequest = [
-    "PUT",
-    `/${objectKey}`,
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
+  const canonicalRequest = [method, `/${objectKey}`, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
 
   const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
   const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
 
   const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
   const kRegion  = await hmacSha256(new Uint8Array(kDate), region);
-const kService = await hmacSha256(new Uint8Array(kRegion), service);
-const kSigning = await hmacSha256(new Uint8Array(kService), "aws4_request");
-  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+  const kService = await hmacSha256(new Uint8Array(kRegion), service);
+  const kSigning = await hmacSha256(new Uint8Array(kService), "aws4_request");
+  const signature = toHex(await hmacSha256(new Uint8Array(kSigning), stringToSign));
 
   const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
 
-  const res = await fetch(url, {
+  return { ...headers, "Authorization": authorization };
+}
+
+async function uploadR2(file: File, path: string): Promise<string> {
+  const objectKey = `${R2_BUCKET}/${path}`;
+  const fileBuffer = await file.arrayBuffer();
+  const headers = await buildAuthHeaders("PUT", objectKey, file.type || "audio/mpeg", fileBuffer);
+
+  const res = await fetch(`${R2_ENDPOINT}/${objectKey}`, {
     method: "PUT",
-    headers: { ...headers, "Authorization": authorization },
+    headers,
     body: fileBuffer,
   });
 
@@ -139,47 +125,20 @@ const kSigning = await hmacSha256(new Uint8Array(kService), "aws4_request");
 }
 
 async function deleteR2(path: string): Promise<void> {
-  const now = new Date();
-  const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-  const shortDate = dateStamp.slice(0, 8);
-  const region = "auto";
-  const service = "s3";
-  const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
   const objectKey = `${R2_BUCKET}/${path}`;
-  const payloadHash = await sha256hex(new ArrayBuffer(0));
-
-  const headers: Record<string, string> = {
-    "host": host,
-    "x-amz-content-sha256": payloadHash,
-    "x-amz-date": dateStamp,
-  };
-
-  const signedHeaders = Object.keys(headers).sort().join(";");
-  const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join("\n") + "\n";
-  const canonicalRequest = ["DELETE", `/${objectKey}`, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
-  const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
-  const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
-
-  const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
-  const kRegion  = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, service);
-  const kSigning = await hmacSha256(kService, "aws4_request");
-  const signature = toHex(await hmacSha256(kSigning, stringToSign));
-  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
+  const headers = await buildAuthHeaders("DELETE", objectKey, "", null);
 
   await fetch(`${R2_ENDPOINT}/${objectKey}`, {
     method: "DELETE",
-    headers: { ...headers, "Authorization": authorization },
+    headers,
   });
 }
 
-// ─────────────────────────────────────────────────────────
-// PLAYER AUDIO
-// ─────────────────────────────────────────────────────────
+// ── Player Audio ──
 
 function AudioPlayer({ url, nome }: { url: string; nome: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
 
@@ -220,25 +179,23 @@ function AudioPlayer({ url, nome }: { url: string; nome: string }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPALE
-// ─────────────────────────────────────────────────────────
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.9px", marginBottom: 8 }}>{children}</div>;
 }
 
+// ── Componente principale ──
+
 export default function SezioneStorage() {
-  const [clienti, setClienti]             = useState<Cliente[]>([]);
-  const [clienteSel, setClienteSel]       = useState<Cliente | null>(null);
-  const [files, setFiles]                 = useState<AudioFile[]>([]);
-  const [loading, setLoading]             = useState(false);
-  const [nuovoBrano, setNuovoBrano]       = useState("");
-  const [uploading, setUploading]         = useState(false);
-  const [toast, setToast]                 = useState<string | null>(null);
+  const [clienti, setClienti]               = useState<Cliente[]>([]);
+  const [clienteSel, setClienteSel]         = useState<Cliente | null>(null);
+  const [files, setFiles]                   = useState<AudioFile[]>([]);
+  const [loading, setLoading]               = useState(false);
+  const [nuovoBrano, setNuovoBrano]         = useState("");
+  const [uploading, setUploading]           = useState(false);
+  const [toast, setToast]                   = useState<string | null>(null);
   const [showNuovoBrano, setShowNuovoBrano] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [branoPerUpload, setBranoPerUpload] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mostraToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -260,13 +217,13 @@ export default function SezioneStorage() {
     caricaFiles(c.email);
   };
 
-  const handleCreaBrano = async () => {
+  const handleCreaBrano = () => {
     if (!nuovoBrano.trim() || !clienteSel) return;
+    const nomeBrano = nuovoBrano.trim();
     setShowNuovoBrano(false);
     setNuovoBrano("");
-    mostraToast(`✓ Cartella "${nuovoBrano.trim()}" creata!`);
-    // La cartella viene creata implicitamente al primo upload
-    setBranoPerUpload(nuovoBrano.trim());
+    setBranoPerUpload(nomeBrano);
+    mostraToast(`✓ Cartella "${nomeBrano}" creata!`);
   };
 
   const handleUpload = async (file: File, brano: string) => {
@@ -280,7 +237,6 @@ export default function SezioneStorage() {
 
       await uploadR2(file, path);
 
-      // Salva in Supabase
       const rows = await supaReq("/audio_files", {
         method: "POST",
         body: JSON.stringify({ cliente_email: clienteSel.email, brano, nome_file: file.name, storage_path: path }),
@@ -306,7 +262,6 @@ export default function SezioneStorage() {
     } catch { alert("Errore nell'eliminazione."); }
   };
 
-  // Raggruppa file per brano
   const perBrano = files.reduce((acc, f) => {
     if (!acc[f.brano]) acc[f.brano] = [];
     acc[f.brano].push(f);
@@ -320,7 +275,6 @@ export default function SezioneStorage() {
 
       {toast && <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", background: C.green, color: "#fff", borderRadius: 12, padding: "11px 20px", fontSize: 13, fontWeight: 700, zIndex: 300, whiteSpace: "nowrap" }}>{toast}</div>}
 
-      {/* Input file nascosto */}
       <input ref={fileInputRef} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" style={{ display: "none" }}
         onChange={async e => {
           const file = e.target.files?.[0];
@@ -347,7 +301,9 @@ export default function SezioneStorage() {
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Beatcave <span style={{ color: C.orange }}>Cloud</span></div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>
+                  Beatcave <span style={{ color: C.orange }}>Cloud</span>
+                </div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>Seleziona un cliente</div>
               </div>
             )}
@@ -379,7 +335,6 @@ export default function SezioneStorage() {
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)", display: "flex", flexDirection: "column", gap: 12 }}>
 
         {!clienteSel ? (
-          /* LISTA CLIENTI */
           <>
             <SectionLabel>Seleziona cliente</SectionLabel>
             {clienti.map((c, i) => {
@@ -401,11 +356,10 @@ export default function SezioneStorage() {
         ) : loading ? (
           <div style={{ textAlign: "center", padding: "32px 0", fontSize: 13, color: "#aaa" }}>Caricamento…</div>
         ) : (
-          /* BRANI E FILE */
           <>
             {uploading && (
               <div style={{ background: C.purpleLight, borderRadius: 10, padding: "12px 14px", fontSize: 13, fontWeight: 600, color: C.purple, display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${C.purple}`, borderTopColor: "transparent", animation: "spin 1s linear infinite" }} />
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${C.purple}`, borderTopColor: "transparent" }} />
                 Caricamento in corso…
               </div>
             )}
@@ -422,7 +376,6 @@ export default function SezioneStorage() {
             ) : (
               brani.map(brano => (
                 <div key={brano} style={{ background: "#fff", border: `0.5px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-                  {/* Header brano */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 16 }}>🎵</span>
@@ -434,8 +387,6 @@ export default function SezioneStorage() {
                       + Carica
                     </button>
                   </div>
-
-                  {/* File del brano */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {perBrano[brano].map(f => (
                       <div key={f.id}>
@@ -452,7 +403,6 @@ export default function SezioneStorage() {
               ))
             )}
 
-            {/* Bottone aggiungi brano in fondo */}
             {brani.length > 0 && (
               <button onClick={() => setShowNuovoBrano(true)} style={{ width: "100%", padding: "13px", borderRadius: 12, border: `1.5px dashed ${C.border}`, background: "#fff", color: "#888", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 + Nuovo brano
