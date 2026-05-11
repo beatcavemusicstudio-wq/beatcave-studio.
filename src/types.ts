@@ -3,8 +3,7 @@
 export type TipoSessione = "Registrazione" | "Mixing" | "Produzione" | "Mastering";
 export type StatoSessione = "in_corso" | "confermata" | "da_confermare";
 export type TabId = "home" | "calendario" | "clienti" | "fatture";
-export type Schermata = "home" | "nuova-prenotazione" | "scheda-sessione" | "clienti" | "fatture" | "calendario";
-
+export type Schermata = "home" | "nuova-prenotazione" | "scheda-sessione" | "clienti" | "fatture" | "calendario" | "disponibilita" | "richieste";
 export interface SessioneCompleta {
   id: number;
   cliente: string;
