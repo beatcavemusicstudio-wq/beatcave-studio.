@@ -101,17 +101,30 @@ async function buildAuthHeaders(method: string, objectKey: string, contentType: 
 }
 
 async function uploadR2(file: File, path: string): Promise<string> {
-  const objectKey = `${R2_BUCKET}/${path}`;
+  // Converte il file in base64
   const fileBuffer = await file.arrayBuffer();
-  const headers = await buildAuthHeaders("PUT", objectKey, file.type || "audio/mpeg", fileBuffer);
+  const bytes = new Uint8Array(fileBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const fileBase64 = btoa(binary);
 
-  const res = await fetch(`${R2_ENDPOINT}/${objectKey}`, {
-    method: "PUT",
-    headers,
-    body: fileBuffer,
+  const res = await fetch("/.netlify/functions/upload-audio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path,
+      contentType: file.type || "audio/mpeg",
+      fileBase64,
+    }),
   });
 
-  if (!res.ok) throw new Error(`Upload fallito: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error ?? "Upload fallito");
+  }
+
   return `${PUBLIC_URL}/${path}`;
 }
 
