@@ -209,13 +209,16 @@ export default function SezioneStorage() {
   };
 
   const handleCreaBrano = () => {
-    if (!nuovoBrano.trim() || !clienteSel) return;
-    const nomeBrano = nuovoBrano.trim();
-    setShowNuovoBrano(false);
-    setNuovoBrano("");
-    setBranoPerUpload(nomeBrano);
-    mostraToast(`✓ Cartella "${nomeBrano}" creata!`);
-  };
+  if (!nuovoBrano.trim() || !clienteSel) return;
+  const nomeBrano = nuovoBrano.trim();
+  setShowNuovoBrano(false);
+  setNuovoBrano("");
+  setBranoPerUpload(nomeBrano);
+  // Apre subito il selettore file
+  requestAnimationFrame(() => {
+    fileInputRef.current?.click();
+  });
+};
 
   const handleUpload = async (file: File, brano: string) => {
     if (!clienteSel) return;
