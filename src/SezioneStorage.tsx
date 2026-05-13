@@ -44,17 +44,25 @@ function iniziali(nome: string): string {
 // ── Upload via Netlify Function (presigned URL) ──
 
 async function uploadR2(file: File, path: string): Promise<string> {
-  // Step 1: chiedi URL pre-firmato alla Netlify Function
-  const fnRes = await fetch("/.netlify/functions/upload-audio", {
+  const fileBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(fileBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  const fileBase64 = btoa(binary);
+
+  const res = await fetch("/.netlify/functions/upload-audio", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, contentType: file.type || "audio/mpeg" }),
+    body: JSON.stringify({ path, contentType: file.type || "audio/mpeg", fileBase64 }),
   });
 
-  if (!fnRes.ok) {
-    const err = await fnRes.json().catch(() => ({ error: "Errore funzione" }));
-    throw new Error(err.error ?? "Errore nel generare URL di upload");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Errore funzione" }));
+    throw new Error(err.error ?? "Upload fallito");
   }
+
+  return `${PUBLIC_URL}/${path}`;
+}
 
   const { presignedUrl } = await fnRes.json();
 
