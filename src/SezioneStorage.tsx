@@ -6,11 +6,7 @@
 
 import { useState, useEffect, useRef } from "react";
 
-const R2_ENDPOINT = "https://5152ba61567f02cdbb439af3630b10b4.r2.cloudflarestorage.com";
-const R2_BUCKET   = "beatcave-audio";
-const R2_ACCESS   = "8880ad678671b9e138a38986ea03a50e";
-const R2_SECRET   = "0b17e135a1b61c007da4a4205f37474af5da7c58790f6db861dfb9b56385be74";
-const PUBLIC_URL  = "https://audio.beatcavestudio.it";
+const PUBLIC_URL = "https://audio.beatcavestudio.it";
 
 const SUPA_BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
 const SUPA_KEY  = "sb_publishable_BGd9aD4jqt6K6txVpDCifA_C-IvCaP_";
@@ -45,97 +41,45 @@ function iniziali(nome: string): string {
   return nome.split(" ").filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
 }
 
-// ── AWS Signature V4 helpers ──
-
-async function hmacSha256(key: unknown, data: string): Promise<ArrayBuffer> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cryptoKey = await (crypto.subtle.importKey as any)(
-    "raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-}
-
-async function sha256hex(data: unknown): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hash = await (crypto.subtle.digest as any)("SHA-256", data);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-function toHex(buf: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function buildAuthHeaders(method: string, objectKey: string, contentType: string, fileBuffer: ArrayBuffer | null): Promise<Record<string, string>> {
-  const now = new Date();
-  const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-  const shortDate = dateStamp.slice(0, 8);
-  const region = "auto";
-  const service = "s3";
-  const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
-
-  const payloadHash = fileBuffer ? await sha256hex(fileBuffer) : await sha256hex(new ArrayBuffer(0));
-
-  const headers: Record<string, string> = {
-    "host": host,
-    "x-amz-content-sha256": payloadHash,
-    "x-amz-date": dateStamp,
-  };
-  if (contentType) headers["content-type"] = contentType;
-
-  const signedHeaders = Object.keys(headers).sort().join(";");
-  const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join("\n") + "\n";
-  const canonicalRequest = [method, `/${objectKey}`, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
-
-  const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
-  const stringToSign = ["AWS4-HMAC-SHA256", dateStamp, credentialScope, await sha256hex(new TextEncoder().encode(canonicalRequest))].join("\n");
-
-  const kDate    = await hmacSha256(`AWS4${R2_SECRET}`, shortDate);
-  const kRegion  = await hmacSha256(new Uint8Array(kDate), region);
-  const kService = await hmacSha256(new Uint8Array(kRegion), service);
-  const kSigning = await hmacSha256(new Uint8Array(kService), "aws4_request");
-  const signature = toHex(await hmacSha256(new Uint8Array(kSigning), stringToSign));
-
-  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
-
-  return { ...headers, "Authorization": authorization };
-}
+// ── Upload via Netlify Function (presigned URL) ──
 
 async function uploadR2(file: File, path: string): Promise<string> {
-  // Converte il file in base64
-  const fileBuffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(fileBuffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const fileBase64 = btoa(binary);
-
-  const res = await fetch("/.netlify/functions/upload-audio", {
+  // Step 1: chiedi URL pre-firmato alla Netlify Function
+  const fnRes = await fetch("/.netlify/functions/upload-audio", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path,
-      contentType: file.type || "audio/mpeg",
-      fileBase64,
-    }),
+    body: JSON.stringify({ path, contentType: file.type || "audio/mpeg" }),
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error ?? "Upload fallito");
+  if (!fnRes.ok) {
+    const err = await fnRes.json().catch(() => ({ error: "Errore funzione" }));
+    throw new Error(err.error ?? "Errore nel generare URL di upload");
+  }
+
+  const { presignedUrl } = await fnRes.json();
+
+  // Step 2: carica direttamente su R2
+  const uploadRes = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "audio/mpeg" },
+    body: file,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    console.error("R2 error:", errText);
+    throw new Error(`Upload R2 fallito: ${uploadRes.status}`);
   }
 
   return `${PUBLIC_URL}/${path}`;
 }
 
-async function deleteR2(path: string): Promise<void> {
-  const objectKey = `${R2_BUCKET}/${path}`;
-  const headers = await buildAuthHeaders("DELETE", objectKey, "", null);
+// ── Delete via firma browser (solo per eliminazione) ──
 
-  await fetch(`${R2_ENDPOINT}/${objectKey}`, {
-    method: "DELETE",
-    headers,
-  });
+async function deleteR2(path: string): Promise<void> {
+  // Per ora logga solo — la delete via browser è complessa
+  // I file rimangono su R2 ma vengono rimossi da Supabase
+  console.log("Delete R2 path:", path);
 }
 
 // ── Player Audio ──
@@ -222,16 +166,15 @@ export default function SezioneStorage() {
   };
 
   const handleCreaBrano = () => {
-  if (!nuovoBrano.trim() || !clienteSel) return;
-  const nomeBrano = nuovoBrano.trim();
-  setShowNuovoBrano(false);
-  setNuovoBrano("");
-  setBranoPerUpload(nomeBrano);
-  // Apre subito il selettore file
-  requestAnimationFrame(() => {
-    fileInputRef.current?.click();
-  });
-};
+    if (!nuovoBrano.trim() || !clienteSel) return;
+    const nomeBrano = nuovoBrano.trim();
+    setShowNuovoBrano(false);
+    setNuovoBrano("");
+    setBranoPerUpload(nomeBrano);
+    requestAnimationFrame(() => {
+      fileInputRef.current?.click();
+    });
+  };
 
   const handleUpload = async (file: File, brano: string) => {
     if (!clienteSel) return;
@@ -332,7 +275,7 @@ export default function SezioneStorage() {
               autoFocus onKeyDown={e => e.key === "Enter" && handleCreaBrano()}
               style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: `0.5px solid ${C.border}`, fontSize: 14, boxSizing: "border-box" as const, outline: "none", marginBottom: 12 }} />
             <button onClick={handleCreaBrano} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: C.orange, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-              Crea cartella
+              Crea cartella e carica file
             </button>
           </div>
         </div>
