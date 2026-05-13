@@ -10,31 +10,74 @@ function hmac(key, data) {
 }
 
 function sha256hex(data) {
-  return crypto.createHash("sha256").update(data).digest("hex");
+  return crypto.createHash("sha256").update(typeof data === "string" ? data : Buffer.from(data)).digest("hex");
 }
 
 exports.handler = async (event) => {
-  const corsHeaders = {
+  const cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers: corsHeaders, body: "" };
-  }
+  if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers: cors, body: "" };
 
   try {
-    const { path, contentType } = JSON.parse(event.body);
+    const { path, contentType, fileBase64 } = JSON.parse(event.body || "{}");
+    if (!path) return { statusCode: 400, headers: cors, body: JSON.stringify({ error: "path mancante" }) };
+
+    const fileBuffer = Buffer.from(fileBase64, "base64");
     const ct = contentType || "audio/mpeg";
 
     const now = new Date();
-    const dateStamp = now.toISOString().replace(/[-:]/g,"").replace(/\..+/,"Z");
-    const shortDate = dateStamp.slice(0, 8);
-    const region = "auto";
+    const pad = n => String(n).padStart(2, "0");
+    const shortDate = `${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}`;
+    const dateStamp = `${shortDate}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+
+    const region  = "auto";
     const service = "s3";
-    const host = new URL(R2_ENDPOINT).host;
-    const objectKey = `${R2_BUCKET}/${path}`;
+    const host    = R2_ENDPOINT.replace("https://", "");
+    const objKey  = `${R2_BUCKET}/${path}`;
+    const scope   = `${shortDate}/${region}/${service}/aws4_request`;
+    const payloadHash = sha256hex(fileBuffer);
+
+    const headers = {
+      "content-type": ct,
+      "host": host,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": dateStamp,
+    };
+
+    const signedHeaders = Object.keys(headers).sort().join(";");
+    const canonicalHeaders = Object.entries(headers).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${k}:${v}`).join("\n") + "\n";
+    const canonicalRequest = ["PUT", `/${objKey}`, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+    const toSign = ["AWS4-HMAC-SHA256", dateStamp, scope, sha256hex(canonicalRequest)].join("\n");
+
+    const kDate    = hmac(`AWS4${R2_SECRET}`, shortDate);
+    const kRegion  = hmac(kDate, region);
+    const kService = hmac(kRegion, service);
+    const kSigning = hmac(kService, "aws4_request");
+    const sig      = hmac(kSigning, toSign).toString("hex");
+
+    const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${scope},SignedHeaders=${signedHeaders},Signature=${sig}`;
+
+    const uploadRes = await fetch(`${R2_ENDPOINT}/${objKey}`, {
+      method: "PUT",
+      headers: { ...headers, "Authorization": authorization },
+      body: fileBuffer,
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      return { statusCode: 500, headers: cors, body: JSON.stringify({ error: errText }) };
+    }
+
+    return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true }) };
+
+  } catch (e) {
+    return { statusCode: 500, headers: cors, body: JSON.stringify({ error: e.message }) };
+  }
+};    const objectKey = `${R2_BUCKET}/${path}`;
     const expiresIn = 900;
 
     const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
