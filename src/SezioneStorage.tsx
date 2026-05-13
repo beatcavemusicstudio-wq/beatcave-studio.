@@ -64,24 +64,6 @@ async function uploadR2(file: File, path: string): Promise<string> {
   return `${PUBLIC_URL}/${path}`;
 }
 
-  const { presignedUrl } = await fnRes.json();
-
-  // Step 2: carica direttamente su R2
-  const uploadRes = await fetch(presignedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "audio/mpeg" },
-    body: file,
-  });
-
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    console.error("R2 error:", errText);
-    throw new Error(`Upload R2 fallito: ${uploadRes.status}`);
-  }
-
-  return `${PUBLIC_URL}/${path}`;
-}
-
 // ── Delete via firma browser (solo per eliminazione) ──
 
 async function deleteR2(path: string): Promise<void> {
