@@ -14,16 +14,14 @@ function sha256(data) {
 }
 
 exports.handler = async (event) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-      },
-      body: "",
-    };
+    return { statusCode: 200, headers: corsHeaders, body: "" };
   }
 
   if (event.httpMethod !== "POST") {
@@ -31,10 +29,66 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { path, contentType, fileBase64 } = JSON.parse(event.body);
-    const fileBuffer = Buffer.from(fileBase64, "base64");
+    const { path, contentType } = JSON.parse(event.body);
 
     const now = new Date();
+    const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const shortDate = dateStamp.slice(0, 8);
+    const region = "auto";
+    const service = "s3";
+    const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
+    const objectKey = `${R2_BUCKET}/${path}`;
+
+    // Genera URL pre-firmato valido 15 minuti
+    const expiresIn = 900;
+    const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
+    const credential = `${R2_ACCESS}/${credentialScope}`;
+
+    const queryParams = new URLSearchParams({
+      "X-Amz-Algorithm":     "AWS4-HMAC-SHA256",
+      "X-Amz-Credential":    credential,
+      "X-Amz-Date":          dateStamp,
+      "X-Amz-Expires":       String(expiresIn),
+      "X-Amz-SignedHeaders": "content-type;host",
+    });
+
+    const canonicalRequest = [
+      "PUT",
+      `/${objectKey}`,
+      queryParams.toString(),
+      `content-type:${contentType || "audio/mpeg"}\nhost:${host}\n`,
+      "content-type;host",
+      "UNSIGNED-PAYLOAD",
+    ].join("\n");
+
+    const stringToSign = [
+      "AWS4-HMAC-SHA256",
+      dateStamp,
+      credentialScope,
+      sha256(canonicalRequest),
+    ].join("\n");
+
+    const kDate    = hmac(`AWS4${R2_SECRET}`, shortDate);
+    const kRegion  = hmac(kDate, region);
+    const kService = hmac(kRegion, service);
+    const kSigning = hmac(kService, "aws4_request");
+    const signature = hmac(kSigning, stringToSign).toString("hex");
+
+    const presignedUrl = `${R2_ENDPOINT}/${objectKey}?${queryParams.toString()}&X-Amz-Signature=${signature}`;
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ presignedUrl }),
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: err.message }),
+    };
+  }
+};    const now = new Date();
     const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
     const shortDate = dateStamp.slice(0, 8);
     const region = "auto";
