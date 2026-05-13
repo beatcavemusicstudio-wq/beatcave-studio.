@@ -9,7 +9,7 @@ function hmac(key, data) {
   return crypto.createHmac("sha256", key).update(data).digest();
 }
 
-function sha256(data) {
+function sha256hex(data) {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 
@@ -24,40 +24,37 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: corsHeaders, body: "" };
   }
 
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
-  }
-
   try {
     const { path, contentType } = JSON.parse(event.body);
+    const ct = contentType || "audio/mpeg";
 
     const now = new Date();
-    const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const dateStamp = now.toISOString().replace(/[-:]/g,"").replace(/\..+/,"Z");
     const shortDate = dateStamp.slice(0, 8);
     const region = "auto";
     const service = "s3";
-    const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
+    const host = new URL(R2_ENDPOINT).host;
     const objectKey = `${R2_BUCKET}/${path}`;
-
-    // Genera URL pre-firmato valido 15 minuti
     const expiresIn = 900;
+
     const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
     const credential = `${R2_ACCESS}/${credentialScope}`;
 
-    const queryParams = new URLSearchParams({
-      "X-Amz-Algorithm":     "AWS4-HMAC-SHA256",
-      "X-Amz-Credential":    credential,
-      "X-Amz-Date":          dateStamp,
-      "X-Amz-Expires":       String(expiresIn),
-      "X-Amz-SignedHeaders": "content-type;host",
-    });
+    // Query string in ordine alfabetico
+    const queryString = [
+      `X-Amz-Algorithm=AWS4-HMAC-SHA256`,
+      `X-Amz-Credential=${encodeURIComponent(credential)}`,
+      `X-Amz-Date=${dateStamp}`,
+      `X-Amz-Expires=${expiresIn}`,
+      `X-Amz-SignedHeaders=host`,
+    ].join("&");
 
     const canonicalRequest = [
       "PUT",
       `/${objectKey}`,
-      queryParams.toString(),
-      `content-type:${contentType || "audio/mpeg"}\nhost:${host}\n`,
-      "content-type;host",
+      queryString,
+      `host:${host}\n`,
+      "host",
       "UNSIGNED-PAYLOAD",
     ].join("\n");
 
@@ -65,7 +62,7 @@ exports.handler = async (event) => {
       "AWS4-HMAC-SHA256",
       dateStamp,
       credentialScope,
-      sha256(canonicalRequest),
+      sha256hex(canonicalRequest),
     ].join("\n");
 
     const kDate    = hmac(`AWS4${R2_SECRET}`, shortDate);
@@ -74,7 +71,7 @@ exports.handler = async (event) => {
     const kSigning = hmac(kService, "aws4_request");
     const signature = hmac(kSigning, stringToSign).toString("hex");
 
-    const presignedUrl = `${R2_ENDPOINT}/${objectKey}?${queryParams.toString()}&X-Amz-Signature=${signature}`;
+    const presignedUrl = `${R2_ENDPOINT}/${objectKey}?${queryString}&X-Amz-Signature=${signature}`;
 
     return {
       statusCode: 200,
@@ -85,80 +82,6 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: err.message }),
-    };
-  }
-};    const now = new Date();
-    const dateStamp = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-    const shortDate = dateStamp.slice(0, 8);
-    const region = "auto";
-    const service = "s3";
-    const host = R2_ENDPOINT.replace("https://", "").split("/")[0];
-    const objectKey = `${R2_BUCKET}/${path}`;
-    const payloadHash = sha256(fileBuffer);
-
-    const headers = {
-      "host": host,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": dateStamp,
-      "content-type": contentType || "audio/mpeg",
-    };
-
-    const signedHeaders = Object.keys(headers).sort().join(";");
-    const canonicalHeaders = Object.entries(headers)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join("\n") + "\n";
-
-    const canonicalRequest = [
-      "PUT",
-      `/${objectKey}`,
-      "",
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join("\n");
-
-    const credentialScope = `${shortDate}/${region}/${service}/aws4_request`;
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      dateStamp,
-      credentialScope,
-      sha256(canonicalRequest),
-    ].join("\n");
-
-    const kDate    = hmac(`AWS4${R2_SECRET}`, shortDate);
-    const kRegion  = hmac(kDate, region);
-    const kService = hmac(kRegion, service);
-    const kSigning = hmac(kService, "aws4_request");
-    const signature = hmac(kSigning, stringToSign).toString("hex");
-
-    const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS}/${credentialScope},SignedHeaders=${signedHeaders},Signature=${signature}`;
-
-    const uploadRes = await fetch(`${R2_ENDPOINT}/${objectKey}`, {
-      method: "PUT",
-      headers: { ...headers, "Authorization": authorization },
-      body: fileBuffer,
-    });
-
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      return {
-        statusCode: 500,
-        headers: { "Access-Control-Allow-Origin": "*" },
-        body: JSON.stringify({ error: errText }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ success: true }),
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({ error: err.message }),
     };
   }
