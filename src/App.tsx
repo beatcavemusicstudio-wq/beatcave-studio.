@@ -4,6 +4,8 @@
  */
 
 import { useState, useEffect } from "react";
+import { initializeApp } from "firebase/app";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import type { SessioneCompleta, Prenotazione, TabId, Schermata, Cliente } from "./types";
 import {
   fetchSessioniFuture, fetchClienti, inserisciSessione, aggiornaSessione,
@@ -18,6 +20,37 @@ import SezioneCalendario from "./SezioneCalendario";
 import SezioneDisponibilita from "./SezioneDisponibilita";
 import SezioneRichieste from "./SezioneRichieste";
 import SezioneStorage from "./SezioneStorage";
+
+// ── Firebase ──
+const firebaseApp = initializeApp({
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebasestorage.app`,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+});
+
+const SUPA_BASE = "https://lpznonwpofwywtvikgfm.supabase.co/rest/v1";
+const SUPA_KEY  = "sb_publishable_BGd9aD4jqt6K6txVpDCifA_C-IvCaP_";
+const SUPA_H    = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+
+async function richiediNotificheAdmin() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return null;
+    const messaging = getMessaging(firebaseApp);
+    const token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+    if (!token) return null;
+    await fetch(`${SUPA_BASE}/fcm_tokens`, {
+      method: "POST",
+      headers: { ...SUPA_H },
+      body: JSON.stringify({ token, tipo: "admin" }),
+    });
+    localStorage.setItem("bc_notifiche_admin", "true");
+    return token;
+  } catch { return null; }
+}
 
 const C = {
   orange:      "#E8610A",
@@ -123,7 +156,13 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
 }
 
 // ── MENU "ALTRO" MOBILE ──
-function MenuAltro({ onClose, onChange, richiesteInAttesa }: { onClose: () => void; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
+function MenuAltro({ onClose, onChange, richiesteInAttesa, notificheAttive, onAttivaNotifiche }: {
+  onClose: () => void;
+  onChange: (t: TabId) => void;
+  richiesteInAttesa: number;
+  notificheAttive: boolean;
+  onAttivaNotifiche: () => void;
+}) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ position: "absolute", bottom: 70, left: 0, right: 0, background: "#fff", borderRadius: "16px 16px 0 0", padding: "16px 16px 8px" }}>
@@ -132,7 +171,7 @@ function MenuAltro({ onClose, onChange, richiesteInAttesa }: { onClose: () => vo
           { id: "fatture"       as TabId, label: "Fatture",       emoji: "📄" },
           { id: "disponibilita" as TabId, label: "Disponibilità", emoji: "📅" },
           { id: "richieste"     as TabId, label: "Richieste",     emoji: "📬", badge: richiesteInAttesa },
-      { id: "storage" as TabId, label: "Beatcave Cloud", emoji: "☁️" },
+          { id: "storage"       as TabId, label: "Beatcave Cloud", emoji: "☁️" },
         ].map(item => (
           <button key={item.id} onClick={() => { onChange(item.id); onClose(); }}
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 10, border: "none", background: "none", cursor: "pointer", marginBottom: 4, position: "relative" }}>
@@ -146,12 +185,26 @@ function MenuAltro({ onClose, onChange, richiesteInAttesa }: { onClose: () => vo
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginLeft: item.badge ? 8 : "auto" }}><path d="M5 2l4 5-4 5" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
         ))}
+        {/* Bottone notifiche */}
+        <button onClick={() => { onAttivaNotifiche(); onClose(); }}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 10, border: "none", background: notificheAttive ? C.greenLight : C.orangeLight, cursor: "pointer", marginBottom: 4 }}>
+          <span style={{ fontSize: 22 }}>🔔</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: notificheAttive ? C.greenDark : C.orange }}>
+            {notificheAttive ? "Notifiche attive ✓" : "Attiva notifiche"}
+          </span>
+        </button>
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeTab, onChange, richiesteInAttesa }: { activeTab: TabId; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
+function Sidebar({ activeTab, onChange, richiesteInAttesa, notificheAttive, onAttivaNotifiche }: {
+  activeTab: TabId;
+  onChange: (t: TabId) => void;
+  richiesteInAttesa: number;
+  notificheAttive: boolean;
+  onAttivaNotifiche: () => void;
+}) {
   const d = new Date();
   const gg = d.toLocaleDateString("it-IT", { weekday: "long" });
   const data = `${gg.charAt(0).toUpperCase() + gg.slice(1)} ${d.getDate()} ${MESI[d.getMonth()]}`;
@@ -162,7 +215,7 @@ function Sidebar({ activeTab, onChange, richiesteInAttesa }: { activeTab: TabId;
     { id: "fatture",       label: "Fatture",      icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="13" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 6h6M5 9h6M5 12h3" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "disponibilita", label: "Disponibilità",icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M5 8h6M8 5v6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "richieste",     label: "Richieste",    badge: richiesteInAttesa, icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2"/><path d="M8 5v4M8 11v.5" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "storage", label: "Beatcave Cloud", badge: undefined, icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12.5 7.5A3.5 3.5 0 0 0 9 4a3.5 3.5 0 0 0-3.45 2.9A2.5 2.5 0 0 0 3.5 10h9a2 2 0 0 0 0-4 2 2 0 0 0-.5.063" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "storage",       label: "Beatcave Cloud", icon: (a) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12.5 7.5A3.5 3.5 0 0 0 9 4a3.5 3.5 0 0 0-3.45 2.9A2.5 2.5 0 0 0 3.5 10h9a2 2 0 0 0 0-4 2 2 0 0 0-.5.063" stroke={a ? C.orange : "rgba(255,255,255,0.4)"} strokeWidth="1.2" strokeLinecap="round"/></svg> },
   ];
   return (
     <div className="bc-sidebar">
@@ -180,6 +233,15 @@ function Sidebar({ activeTab, onChange, richiesteInAttesa }: { activeTab: TabId;
             )}
           </button>
         ))}
+      </div>
+      {/* Bottone notifiche nella sidebar */}
+      <div style={{ padding: "10px 10px", borderTop: "0.5px solid rgba(255,255,255,0.08)" }}>
+        <button onClick={onAttivaNotifiche} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: notificheAttive ? "rgba(29,158,117,0.2)" : "rgba(232,97,10,0.15)" }}>
+          <span style={{ fontSize: 14 }}>🔔</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: notificheAttive ? C.green : C.orange }}>
+            {notificheAttive ? "Notifiche attive" : "Attiva notifiche"}
+          </span>
+        </button>
       </div>
       <div style={{ padding: 12, borderTop: "0.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>VS</div>
@@ -275,11 +337,17 @@ function SessioniFuture({ sessioni, onTap }: { sessioni: SessioneCompleta[]; onT
   );
 }
 
-// ── TAB BAR MOBILE con tab "Altro" ──
-function TabBar({ active, onChange, richiesteInAttesa }: { active: TabId; onChange: (t: TabId) => void; richiesteInAttesa: number }) {
+// ── TAB BAR MOBILE ──
+function TabBar({ active, onChange, richiesteInAttesa, notificheAttive, onAttivaNotifiche }: {
+  active: TabId;
+  onChange: (t: TabId) => void;
+  richiesteInAttesa: number;
+  notificheAttive: boolean;
+  onAttivaNotifiche: () => void;
+}) {
   const [showAltro, setShowAltro] = useState(false);
 
-  const isAltroActive = ["fatture","disponibilita","richieste"].includes(active);
+  const isAltroActive = ["fatture","disponibilita","richieste","storage"].includes(active);
   const hasBadge = richiesteInAttesa > 0;
 
   const tabs = [
@@ -290,7 +358,15 @@ function TabBar({ active, onChange, richiesteInAttesa }: { active: TabId; onChan
 
   return (
     <>
-      {showAltro && <MenuAltro onClose={() => setShowAltro(false)} onChange={id => { onChange(id); setShowAltro(false); }} richiesteInAttesa={richiesteInAttesa} />}
+      {showAltro && (
+        <MenuAltro
+          onClose={() => setShowAltro(false)}
+          onChange={id => { onChange(id); setShowAltro(false); }}
+          richiesteInAttesa={richiesteInAttesa}
+          notificheAttive={notificheAttive}
+          onAttivaNotifiche={() => { onAttivaNotifiche(); setShowAltro(false); }}
+        />
+      )}
       <div className="bc-tabbar" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: `0.5px solid ${C.border}`, background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => onChange(tab.id)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer" }}>
@@ -298,7 +374,6 @@ function TabBar({ active, onChange, richiesteInAttesa }: { active: TabId; onChan
             <span style={{ fontSize: 10, fontWeight: tab.id === active ? 700 : 400, color: tab.id === active ? C.orange : "#bbb" }}>{tab.label}</span>
           </button>
         ))}
-        {/* Tab ALTRO */}
         <button onClick={() => setShowAltro(true)} style={{ padding: "9px 0 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", position: "relative" }}>
           {hasBadge && (
             <div style={{ position: "absolute", top: 6, right: "50%", transform: "translateX(8px)", background: "#E24B4A", width: 8, height: 8, borderRadius: "50%", border: "1.5px solid #fff" }} />
@@ -329,6 +404,10 @@ export default function App() {
   const [errore, setErrore]                 = useState<string | null>(null);
   const [dataPreselezionata, setDataPresel] = useState<string | undefined>(undefined);
   const [richiesteInAttesa, setRichieste]   = useState(0);
+  const [notificheAttive, setNotificheAttive] = useState(() => {
+    try { return localStorage.getItem("bc_notifiche_admin") === "true" && Notification.permission === "granted"; }
+    catch { return false; }
+  });
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -336,6 +415,27 @@ export default function App() {
     document.head.appendChild(style);
     return () => { document.head.removeChild(style); };
   }, []);
+
+  // Gestisce messaggi Firebase in foreground
+  useEffect(() => {
+    try {
+      const messaging = getMessaging(firebaseApp);
+      onMessage(messaging, (payload) => {
+        const { title, body } = payload.notification ?? {};
+        if (title) new Notification(title, { body, icon: "/logo.png" });
+      });
+    } catch { /* browser non supporta */ }
+  }, []);
+
+  const handleAttivaNotifiche = async () => {
+    const token = await richiediNotificheAdmin();
+    if (token) {
+      setNotificheAttive(true);
+      alert("✓ Notifiche attivate! Riceverai una notifica per ogni nuova richiesta.");
+    } else {
+      alert("Non è stato possibile attivare le notifiche. Controlla i permessi del browser.");
+    }
+  };
 
   const caricaDati = async () => {
     setLoading(true);
@@ -358,7 +458,6 @@ export default function App() {
 
   useEffect(() => { caricaDati(); }, []);
 
-  // Ricarica il badge ogni 30 secondi
   useEffect(() => {
     const interval = setInterval(() => {
       fetchRichiesteInAttesa().then(setRichieste);
@@ -440,12 +539,12 @@ export default function App() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    if (tab === "clienti")         setSchermata("clienti");
-    else if (tab === "fatture")    setSchermata("fatture");
-    else if (tab === "calendario") setSchermata("calendario");
+    if (tab === "clienti")            setSchermata("clienti");
+    else if (tab === "fatture")       setSchermata("fatture");
+    else if (tab === "calendario")    setSchermata("calendario");
     else if (tab === "disponibilita") setSchermata("disponibilita");
-    else if (tab === "richieste")  { setSchermata("richieste"); fetchRichiesteInAttesa().then(setRichieste); }
-    else if (tab === "storage")    setSchermata("storage");
+    else if (tab === "richieste")     { setSchermata("richieste"); fetchRichiesteInAttesa().then(setRichieste); }
+    else if (tab === "storage")       setSchermata("storage");
     else setSchermata("home");
   };
 
@@ -476,7 +575,7 @@ export default function App() {
   if (schermata === "scheda-sessione" && sessioneAttiva) {
     return (
       <div style={{ display: "flex", width: "100%", minHeight: "100dvh", fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-        <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
+        <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} notificheAttive={notificheAttive} onAttivaNotifiche={handleAttivaNotifiche} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <SchedaSessione
             sessione={sessioneAttiva}
@@ -495,11 +594,11 @@ export default function App() {
 
   const wrapWithLayout = (content: JSX.Element) => (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} notificheAttive={notificheAttive} onAttivaNotifiche={handleAttivaNotifiche} />
       <div className="bc-main" style={{ background: C.bg }}>
         {content}
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
+          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} notificheAttive={notificheAttive} onAttivaNotifiche={handleAttivaNotifiche} />
         </div>
       </div>
     </div>
@@ -510,12 +609,12 @@ export default function App() {
   if (schermata === "fatture")       return wrapWithLayout(<SezioneFatture clienti={clienti} sessioniOggi={sessioni} />);
   if (schermata === "disponibilita") return wrapWithLayout(<SezioneDisponibilita />);
   if (schermata === "richieste")     return wrapWithLayout(<SezioneRichieste />);
-  if (schermata === "storage") return wrapWithLayout(<SezioneStorage />);
+  if (schermata === "storage")       return wrapWithLayout(<SezioneStorage />);
 
   // ── HOME ──
   return (
     <div className="bc-app" style={{ fontFamily: "'SF Pro Text','Helvetica Neue',Arial,sans-serif", WebkitFontSmoothing: "antialiased" }}>
-      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
+      <Sidebar activeTab={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} notificheAttive={notificheAttive} onAttivaNotifiche={handleAttivaNotifiche} />
       <div className="bc-main" style={{ background: C.bg }}>
         <MobileTopbar />
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
@@ -532,7 +631,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
-          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} />
+          <TabBar active={activeTab} onChange={handleTabChange} richiesteInAttesa={richiesteInAttesa} notificheAttive={notificheAttive} onAttivaNotifiche={handleAttivaNotifiche} />
         </div>
       </div>
     </div>
