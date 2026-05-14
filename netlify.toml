@@ -2,10 +2,14 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyByyB0GONVamoWipDhSesfszfUwULMbJaY"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
 [functions]
   node_bundler = "esbuild"
 
