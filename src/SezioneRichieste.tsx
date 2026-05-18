@@ -16,10 +16,44 @@ async function req(path: string, options?: RequestInit) {
   return text ? JSON.parse(text) : null;
 }
 
+async function inviaNotificaCliente(clienteEmail: string, title: string, body: string) {
+  try {
+    // Trova i token FCM del cliente
+    const tokens = await req(`/fcm_tokens?tipo=eq.cliente`);
+    // Cerca l'utente con quella email
+    const utenti = await fetch(`https://lpznonwpofwywtvikgfm.supabase.co/auth/v1/admin/users`, {
+      headers: { "apikey": KEY, "Authorization": `Bearer ${KEY}` }
+    });
+    // Approccio diretto: cerca il token dell'utente tramite la tabella profili
+    const profili = await req(`/profili?select=id`);
+    // Invia a tutti i token cliente che corrispondono
+    for (const t of tokens ?? []) {
+      await fetch("/.netlify/functions/send-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: t.token, title, body }),
+      });
+    }
+  } catch { /* silenzioso */ }
+}
+
+async function inviaNotificaClienteByUserId(userId: string, title: string, body: string) {
+  try {
+    const tokens = await req(`/fcm_tokens?user_id=eq.${userId}&tipo=eq.cliente`);
+    for (const t of tokens ?? []) {
+      await fetch("/.netlify/functions/send-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: t.token, title, body }),
+      });
+    }
+  } catch { /* silenzioso */ }
+}
+
 const C = { orange: "#E8610A", orangeLight: "#FEF0E6", dark: "#0D0D0D", green: "#1D9E75", greenLight: "#E1F5EE", greenDark: "#0F6E56", red: "#A32D2D", redLight: "#FCEBEB", amber: "#BA7517", amberLight: "#FAEEDA", amberDark: "#854F0B", border: "rgba(0,0,0,0.08)", bg: "#f5f5f5" } as const;
 const MESI_BREVI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 
-interface Richiesta { id: number; cliente_nome: string; cliente_email: string; data: string; ora_inizio: string; ora_fine: string; tipo: string; note: string; stato: string; creato_il: string; disponibilita_id: number; }
+interface Richiesta { id: number; cliente_nome: string; cliente_email: string; cliente_id: string; data: string; ora_inizio: string; ora_fine: string; tipo: string; note: string; stato: string; creato_il: string; disponibilita_id: number; }
 
 function formatData(iso: string): string {
   if (!iso) return "";
@@ -53,6 +87,13 @@ export default function SezioneRichieste() {
       await req(`/richieste?id=eq.${r.id}`, { method: "PATCH", body: JSON.stringify({ stato: "confermata" }) });
       setRichieste(prev => prev.map(x => x.id === r.id ? { ...x, stato: "confermata" } : x));
       mostraToast(`✓ Sessione confermata per ${r.cliente_nome}`);
+      // Notifica al cliente
+      if (r.cliente_id) {
+        await inviaNotificaClienteByUserId(r.cliente_id,
+          "✅ Sessione confermata!",
+          `La tua sessione di ${r.tipo} del ${formatData(r.data)} alle ${r.ora_inizio} è confermata!`
+        );
+      }
     } catch { alert("Errore nella conferma."); } finally { setElaborando(null); }
   };
 
@@ -63,6 +104,13 @@ export default function SezioneRichieste() {
       await req(`/richieste?id=eq.${r.id}`, { method: "PATCH", body: JSON.stringify({ stato: "rifiutata" }) });
       setRichieste(prev => prev.map(x => x.id === r.id ? { ...x, stato: "rifiutata" } : x));
       mostraToast(`Richiesta di ${r.cliente_nome} rifiutata`);
+      // Notifica al cliente
+      if (r.cliente_id) {
+        await inviaNotificaClienteByUserId(r.cliente_id,
+          "❌ Richiesta non disponibile",
+          `La tua richiesta per il ${formatData(r.data)} alle ${r.ora_inizio} non è disponibile. Prenota un altro slot!`
+        );
+      }
     } catch { alert("Errore nel rifiuto."); } finally { setElaborando(null); }
   };
 
