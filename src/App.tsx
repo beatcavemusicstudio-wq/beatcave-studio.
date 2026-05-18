@@ -44,7 +44,7 @@ async function richiediNotificheAdmin() {
     try {
       token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
     } catch(e) {
-      alert("Errore getToken: " + e.message);
+     alert("Errore getToken: " + (e as Error).message);
       return null;
     }
     if (!token) { alert("Token vuoto"); return null; }
