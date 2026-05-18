@@ -30,9 +30,17 @@ exports.handler = async (event) => {
 
   try {
     const { token, title, body } = JSON.parse(event.body || "{}");
+
+    console.log("GESTIONALE - TOKEN:", token ? token.substring(0, 20) + "..." : "MANCANTE");
+    console.log("GESTIONALE - TITLE:", title);
+    console.log("GESTIONALE - PROJECT_ID:", PROJECT_ID);
+    console.log("GESTIONALE - CLIENT_EMAIL:", CLIENT_EMAIL);
+    console.log("GESTIONALE - PRIVATE_KEY presente:", !!PRIVATE_KEY);
+
     if (!token || !title) return { statusCode: 400, headers: cors, body: JSON.stringify({ error: "token e title richiesti" }) };
 
     const accessToken = await getAccessToken();
+    console.log("GESTIONALE - ACCESS TOKEN:", !!accessToken);
 
     const res = await fetch(`https://fcm.googleapis.com/v1/projects/${PROJECT_ID}/messages:send`, {
       method: "POST",
@@ -56,9 +64,12 @@ exports.handler = async (event) => {
     });
 
     const data = await res.json();
+    console.log("GESTIONALE - FCM RESPONSE:", JSON.stringify(data));
+
     if (!res.ok) return { statusCode: 500, headers: cors, body: JSON.stringify({ error: data }) };
     return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true }) };
   } catch (e) {
+    console.log("GESTIONALE - ERRORE:", e.message);
     return { statusCode: 500, headers: cors, body: JSON.stringify({ error: e.message }) };
   }
 };
