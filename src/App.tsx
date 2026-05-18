@@ -38,10 +38,16 @@ const SUPA_H    = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "
 async function richiediNotificheAdmin() {
   try {
     const permission = await Notification.requestPermission();
-    if (permission !== "granted") return null;
+    if (permission !== "granted") { alert("Permesso negato: " + permission); return null; }
     const messaging = getMessaging(firebaseApp);
-    const token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
-    if (!token) return null;
+    let token;
+    try {
+      token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+    } catch(e) {
+      alert("Errore getToken: " + e.message);
+      return null;
+    }
+    if (!token) { alert("Token vuoto"); return null; }
     await fetch(`${SUPA_BASE}/fcm_tokens`, {
       method: "POST",
       headers: { ...SUPA_H },
